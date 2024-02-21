@@ -20,6 +20,7 @@ DrawPriority = np.zeros([LightN,LightN,LightN],dtype="byte")
 dT = 0.01
 
 
+# Setup simulation configuration
 SimConfig = {}
 
 SimConfig["Ion_N"] = 25
@@ -34,6 +35,7 @@ SimConfig["Film_SecondaryThreshold"] = 25
 SimConfig["Film_StickThreshold"] = 0.05
 
 
+# Base particle class
 class particle:
     def __init__(self,Pos,Vel,Mass=1,Charge=1,Col=[1,0,0],DrawPri=1,ID="None"):
         
@@ -102,7 +104,7 @@ class particle:
         return np.array([0,0,0])
 
 
-
+# Base thin film class
 class thinFilm:
     def __init__(self,Thk = 0.75, Mass = 1, N_Den = 1, SecondThreshold = 0.5, StickThreshold = 0.01):
         self.Thk = Thk
@@ -112,6 +114,8 @@ class thinFilm:
         self.StickThreshold = StickThreshold
 
 
+# Main GUI window to display animation, outputs lightcube data at end
+# TODO convert canvas to matplotlib 3d plotting instead.
 class Window(tk.Frame):
     """
     Main window for AutoLab
