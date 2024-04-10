@@ -19,6 +19,9 @@ DrawPriority = np.zeros([LightN,LightN,LightN],dtype="byte")
 #Time step
 dT = 0.01
 
+#GUI disable graphics
+UpdateCanvas = True
+
 
 # Setup simulation configuration
 SimConfig = {}
@@ -129,6 +132,8 @@ class Window(tk.Frame):
         
         global SimConfig
         
+        self.master = master
+        
         super().__init__(master)
         
         self.Size = 400
@@ -149,7 +154,7 @@ class Window(tk.Frame):
         self.Particles = []
         
         
-        for I in range(25):
+        for I in range(SimConfig["Ion_N"]):
             
             Ion = particle(SimConfig["Ion_Position"],
                            SimConfig["Ion_Velocity"],
@@ -170,7 +175,7 @@ class Window(tk.Frame):
         
     
     def update(self):
-        global dT
+        global dT, UpdateCanvas
         
         NewParticles = []
         
@@ -184,6 +189,10 @@ class Window(tk.Frame):
             if type(M) != None:
                 MagM = np.linalg.norm(M)
                 
+                # if MagM > 0:
+                #     CollisionPoint = particle(P.Pos, np.zeros(3),Mass=self.Film.Mass,Col=[0,0,1])
+                #     NewParticles.append(CollisionPoint)
+                
                 if MagM > self.Film.SecondThreshold:
                     Secondary = particle(P.Pos, -M/self.Film.Mass,Mass=self.Film.Mass,Col=[0,1,0])
                     NewParticles.append(Secondary)
@@ -195,13 +204,15 @@ class Window(tk.Frame):
         for P in NewParticles:
             self.Particles.append(P)
         
-        self.drawParticles()
+        if UpdateCanvas:
+            self.drawParticles()
+            
         self.Steps += 1
         
         if self.Steps > 300:
             self.outputCube()
             self.plotCube()
-            self.destroy()
+            self.master.destroy()
         else:
             self.after(16,self.update)
     
