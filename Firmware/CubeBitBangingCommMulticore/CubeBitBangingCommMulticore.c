@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
+#include "pico/multicore.h"
 
 
 
@@ -17,12 +18,24 @@
 
 #define dataPin 3
 
-void OutputFrame(bool frame[2][8][8][32][3], int frameSelect){
+// Define the 2 frames, each 8 by 8 by 32 pixels and 3 colors deep
+bool frame[2][8][8][32][3] = {false};
+
+int frameSelect = 0;
+
+void OutputFrame(){
 
     bool led = false;
 
     const int ColSeq[3] = {1,2,0};
     int c;
+
+    while(1){
+    
+    gpio_put(25,1);
+    sleep_ms(10);
+    gpio_put(25,0);
+    
 
     for(int k = 0; k < 32; k++){
         // Load new layer data into the shift registers
@@ -86,14 +99,14 @@ void OutputFrame(bool frame[2][8][8][32][3], int frameSelect){
         //Limit Framerate, display current layer for 1ms
     }
 
+
+    }
+
 }
 
 int main() {
 
-    // Define the 2 frames, each 8 by 8 by 32 pixels and 3 colors deep
-    bool frame[2][8][8][32][3] = {false};
-
-    int frameSelect = 0;
+    stdio_init_all();
 
     gpio_init(25);
     gpio_set_dir(25, GPIO_OUT);
@@ -135,33 +148,72 @@ int main() {
     gpio_put(layerSelE,1); // Active low
     gpio_put(layerSelF,0); // Active low
 
+
+    //Start the display
+    multicore_launch_core1(OutputFrame);
+
+
     int i = 0;
     int j = 0;
     int k = 0;
 
+    char ch;
+
+    int frameEdit = 1;
+
      while(1){
-        i++;
-        if(i==8){
+
+
+        //get a character from the serial buffer
+        ch = getchar();
+
+        // define first bit as no data, starting, reset
+
+        if(0b10000000 & ch){
             i = 0;
-            j++;
-        }
-        if(j==8){
             j = 0;
-            k++;
-        }
-        if(k==32){
             k = 0;
         }
+        else{
 
-        frame[0][i][j][k][0] = 1;
-        frame[0][i][j][k][1] = 1;
-        frame[0][i][j][k][2] = 1;
+            frame[frameEdit][i][j][k][0] = ch>>0 & 0b00000001;
+            frame[frameEdit][i][j][k][1] = ch>>1 & 0b00000001;
+            frame[frameEdit][i][j][k][2] = ch>>2 & 0b00000001;
+            
+            i++;
 
-        OutputFrame(frame,frameSelect);
+            frame[frameEdit][i][j][k][0] = ch>>3 & 0b00000001;
+            frame[frameEdit][i][j][k][1] = ch>>4 & 0b00000001;
+            frame[frameEdit][i][j][k][2] = ch>>5 & 0b00000001;
 
-        frame[0][i][j][k][0] = 0;
-        frame[0][i][j][k][1] = 0;
-        frame[0][i][j][k][2] = 0;
+            i++;
+
+            if(i==8){
+            i = 0;
+            j++;
+            }
+            if(j==8){
+                j = 0;
+                k++;
+            }
+            if(k==32){
+                k = 0;
+                if(frameSelect == 0){
+                    frameSelect = 1;
+                    frameEdit = 0;
+                }
+                else{
+                    frameSelect = 0;
+                    frameEdit = 1;
+                }
+            }
+
+            //frameSelect
+            //frame[2][8][8][32][3]
+
+        }
+
+
      }
 
     return 0;

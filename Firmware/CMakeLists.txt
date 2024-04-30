@@ -13,3 +13,4 @@ pico_sdk_init()
 
 add_subdirectory(helloworld)
 add_subdirectory(CubeBitBanging)
+add_subdirectory(CubeBitBangingCommMulticore)

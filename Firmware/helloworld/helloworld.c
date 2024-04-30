@@ -2,7 +2,14 @@
 #include "pico/stdlib.h"
 
 int main() {
-    setup_default_uart();
-    printf("Hello, world!!!\n");
+    stdio_init_all();
+
+    char ch;
+
+    while(true){
+    ch = getchar();
+    printf("Echo: %c\n", ch);
+    }
+
     return 0;
 }
