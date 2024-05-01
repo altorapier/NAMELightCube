@@ -5,6 +5,8 @@ Created on Mon Feb 19 15:38:58 2024
 @author: eenmv
 """
 
+import serial
+import serial.tools.list_ports
 
 import numpy as np
 import tkinter as tk
@@ -12,15 +14,18 @@ import matplotlib.pyplot as plt
 import time
 
 # cube is always 1 unit
-LightN = 32
-LightCube = np.zeros([LightN,LightN,LightN,3],dtype="bool") # cube N*N*N*3 RGB
-DrawPriority = np.zeros([LightN,LightN,LightN],dtype="byte")
+LightN = [8,8,32]
+LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
+DrawPriority = np.zeros([LightN[0],LightN[1],LightN[2]],dtype="byte")
 
 #Time step
-dT = 0.01
+dT = 0.02
 
 #GUI disable graphics
 UpdateCanvas = True
+
+cubePort = None
+
 
 
 # Setup simulation configuration
@@ -29,13 +34,13 @@ SimConfig = {}
 SimConfig["Ion_N"] = 25
 SimConfig["Ion_Mass"] = 208
 SimConfig["Ion_Position"] = np.array([0.5,0.5,0.95])
-SimConfig["Ion_Velocity"] = np.array([0.1,0.1,-1])
+SimConfig["Ion_Velocity"] = np.array([0,0,-1])
 
 SimConfig["Film_Thickness"] = 0.75
 SimConfig["Film_Mass"] = 29
-SimConfig["Film_N_Density"] = 100
+SimConfig["Film_N_Density"] = 200
 SimConfig["Film_SecondaryThreshold"] = 25
-SimConfig["Film_StickThreshold"] = 0.05
+SimConfig["Film_StickThreshold"] = 0.15
 
 
 # Base particle class
@@ -56,6 +61,7 @@ class particle:
         # Intial ion should have larger priority for example
         self.DrawPri = DrawPri
         self.Trail = False
+        self.TrailCol = self.Col
         self.PastPos = [Pos]
     
     def move(self,ThinFilm,dT):
@@ -64,7 +70,7 @@ class particle:
         
         InFilm = (self.Pos[2]<ThinFilm.Thk)
         
-        # Film is sticka and below threshold strongly damp velocity
+        # Film is sticky and below threshold strongly damp velocity
         if (E < ThinFilm.StickThreshold) & InFilm:
             self.Vel = self.Vel*0.1
         
@@ -130,7 +136,7 @@ class Window(tk.Frame):
         Initial setup of widgets and the general window position
         """
         
-        global SimConfig
+        global SimConfig, cubePort
         
         self.master = master
         
@@ -156,11 +162,17 @@ class Window(tk.Frame):
         
         for I in range(SimConfig["Ion_N"]):
             
-            Ion = particle(SimConfig["Ion_Position"],
-                           SimConfig["Ion_Velocity"],
-                           SimConfig["Ion_Mass"])
+            RanPos = np.array([np.random.random()-0.5,
+                               np.random.random()-0.5,
+                               0])
             
-            Ion.Trail = True
+            Ion = particle(SimConfig["Ion_Position"] + RanPos*0.5,
+                           SimConfig["Ion_Velocity"],
+                           SimConfig["Ion_Mass"],
+                           Col = [1,0,0])
+            
+            Ion.Trail = False
+            Ion.TrailCol = [1,0,0]
             Ion.DrawPri = 2
             
             self.Particles.append(Ion)
@@ -175,7 +187,7 @@ class Window(tk.Frame):
         
     
     def update(self):
-        global dT, UpdateCanvas
+        global dT, UpdateCanvas, cubePort, LightCube
         
         NewParticles = []
         
@@ -199,7 +211,12 @@ class Window(tk.Frame):
                 
                 Energy += np.linalg.norm(P.Vel)**2*P.Mass*0.5
         
-        print("Total Energy: {}".format(Energy))
+        #print("Total Energy: {}".format(Energy))
+        
+        self.outputCube()
+        
+        if cubePort != None:
+            Send(cubePort,LightCube)
         
         for P in NewParticles:
             self.Particles.append(P)
@@ -210,7 +227,8 @@ class Window(tk.Frame):
         self.Steps += 1
         
         if self.Steps > 300:
-            self.outputCube()
+            if cubePort != None:
+                cubePort.close()
             self.plotCube()
             self.master.destroy()
         else:
@@ -228,11 +246,13 @@ class Window(tk.Frame):
         
         for P in self.Particles:
             
+            Pos = np.copy(P.Pos)
+            
             # flatten depth
-            X = self.Size * ((0.5-P.Pos[0])*np.sin(self.Angle) + 
-                             (0.5-P.Pos[1])*np.cos(self.Angle) +
+            X = self.Size * ((0.5-Pos[0])*np.sin(self.Angle) + 
+                             (0.5-Pos[1])*np.cos(self.Angle) +
                               0.5)
-            Y = self.Size * (1-P.Pos[2])
+            Y = self.Size * (1-Pos[2])
             
             R = 3
             
@@ -314,29 +334,43 @@ class Window(tk.Frame):
     
     def outputCube(self):
         
-        global LightCube,LightN,DrawPriority
+        global LightCube,LightN,DrawPriority,SimConfig
         
         Start = time.perf_counter()
         
         LightCube[:,:,:,:] = False #clear cube
         DrawPriority[:,:,:] = 0 #Clear Draw Priority
         
+        surfacelayer = int( SimConfig["Film_Thickness"] * LightN[2] )
+        
+        LightCube[:,:,surfacelayer,2] = True
+        
         for P in self.Particles:
-            Pos = P.Pos
-            Pos = np.round(Pos*LightN)
+            Pos = np.copy(P.Pos)
+            Pos[0] = np.round(Pos[0]*LightN[0])
+            Pos[1] = np.round(Pos[1]*LightN[1])
+            Pos[2] = np.round(Pos[2]*LightN[2])
             
             i = int(Pos[0])
             j = int(Pos[1])
             k = int(Pos[2])
             
-            if max([i,j,k]) < LightN and min([i,j,k]) >= 0:
+            # pShape = [[0,0,0],[0,0,1],[0,1,0],[0,1,1],
+            #           [1,0,0],[1,0,1],[1,1,0],[1,1,1]]
+            
+            pShape = [[0,0,0]]
+            
+            if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
                 if DrawPriority[i,j,k] < P.DrawPri: #Check is the draw priority is larger
                     if P.Col[0]>0.5:
-                        LightCube[i,j,k,0] = True
+                        for S in pShape:
+                            LightCube[i+S[0],j+S[1],k+S[2],0] = True
                     if P.Col[1]>0.5:
-                        LightCube[i,j,k,1] = True
+                        for S in pShape:
+                            LightCube[i+S[0],j+S[1],k+S[2],1] = True
                     if P.Col[2]>0.5:
-                        LightCube[i,j,k,2] = True
+                        for S in pShape:
+                            LightCube[i+S[0],j+S[1],k+S[2],2] = True
                 
                     DrawPriority[i,j,k] = P.DrawPri
             
@@ -345,28 +379,33 @@ class Window(tk.Frame):
                 N = len(P.PastPos)
                 self.drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
                 for n in range(N-1):
-                    self.drawLineCube(P.PastPos[n], P.PastPos[n+1], P.Col, P.DrawPri)
+                    self.drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
 
         End = time.perf_counter()
         
-        print("Seconds to draw cube: {}".format((End-Start)))
+        #print("Seconds to draw cube: {}".format((End-Start)))
     
     
     def drawLineCube(self,P1,P2,Col,DrawPri):
         
         global LightCube,LightN,DrawPriority
-        N = int(np.linalg.norm(P2-P1)*LightN*2) # Number of sample points
+        N = int(np.linalg.norm(P2-P1)*max(LightN)*2) # Number of sample points
         if N==0:
             return
         for n in range(N+1):
             
-            Pos = ( n/N * (P2-P1) + P1) * LightN
+            Pos = ( n/N * (P2-P1) + P1)
+            
+            Pos[0] = np.round(Pos[0]*LightN[0])
+            Pos[1] = np.round(Pos[1]*LightN[1])
+            Pos[2] = np.round(Pos[2]*LightN[2])
+            
             i = int(Pos[0])
             j = int(Pos[1])
             k = int(Pos[2])
             
             #Check if in bounds
-            if max([i,j,k]) < LightN and min([i,j,k]) >= 0:
+            if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
                 if DrawPriority[i,j,k] < DrawPri:
                     if Col[0]>0.5:
                         LightCube[i,j,k,0] = True
@@ -394,15 +433,40 @@ class Window(tk.Frame):
 
         plt.show()
             
+
+def Send(port,lightCube):
+    
+    framepacket = chr(0b10000000) # start with the reset character
+    
+    for k in range(32):
+        for j in range(8):
+            for i in range(4):
                 
-        
+                char = ( 0b01000000 |
+                        lightCube[2*i,j,k,0] << 0 |
+                        lightCube[2*i,j,k,1] << 1 |
+                        lightCube[2*i,j,k,2] << 2 |
+                        lightCube[2*i+1,j,k,0] << 3 |
+                        lightCube[2*i+1,j,k,1] << 4 |
+                        lightCube[2*i+1,j,k,2] << 5
+                        )
+                
+                framepacket += chr(char)
+    
+    
+    port.write(bytearray(framepacket,'utf-8'))
     
 
 if __name__=="__main__":
     
+    try:
+        cubePort = serial.Serial("COM"+str(17),115200)
+    except:
+        print("Could not connect to THE CUBE")
+    
     #Make and start main window
     root = tk.Tk()
     Sim = Window(root)
-    root.title("Autolab")
+    root.title("Cube display")
 
     Sim.mainloop()

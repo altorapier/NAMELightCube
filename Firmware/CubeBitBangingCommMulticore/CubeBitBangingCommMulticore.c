@@ -32,10 +32,6 @@ void OutputFrame(){
 
     while(1){
     
-    gpio_put(25,1);
-    sleep_ms(10);
-    gpio_put(25,0);
-    
 
     for(int k = 0; k < 32; k++){
         // Load new layer data into the shift registers

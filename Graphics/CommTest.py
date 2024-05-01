@@ -9,6 +9,8 @@ import serial.tools.list_ports
 import numpy as np
 import matplotlib.pyplot as plt
 
+import time
+
 
 lightCube = np.zeros([8,8,32,3],dtype='bool')
 
@@ -33,52 +35,48 @@ lightCube = np.zeros([8,8,32,3],dtype='bool')
 # plt.show()
 
 
-def Main(comm):
+def Main(port):
     
     global lightCube
     
-    cubePort = serial.Serial("COM"+str(comm),115200)
+    cubePort = port
     
-    lightCube[:,:,10,0] = True
-    #lightCube[:,:,11,1] = True
-    #lightCube[:,:,12,2] = True
-    
-    voxelarray = lightCube[:,:,:,0] | lightCube[:,:,:,1] | lightCube[:,:,:,2]
+    while(1):
+        
+        for col in range(3):
+            for layer in range(32):
+                lightCube[:,:,:,:] = False
+                lightCube[:,:,layer,col] = True
+                
+                Send(cubePort,lightCube)
+                
+                foo = input("Next")
+                
+                time.sleep(0)
+        
 
-    colors = np.empty(voxelarray.shape, dtype=object)
-    colors[lightCube[:,:,:,0]] = 'red'
-    colors[lightCube[:,:,:,1]] = 'green'
-    colors[lightCube[:,:,:,2]] = 'blue'
-
-    # and plot everything
-    ax = plt.figure().add_subplot(projection='3d')
-    ax.voxels(voxelarray, facecolors=colors)
-
-    plt.show()
-    
-    cubePort.close()
 
 def Send(port,lightCube):
     
     framepacket = chr(0b10000000) # start with the reset character
     
-    for i in range(4):
+    for k in range(32):
         for j in range(8):
-            for k in range(32):
+            for i in range(4):
                 
-                char = (chr(0b01000000) |
+                char = ( 0b01000000 |
                         lightCube[2*i,j,k,0] << 0 |
                         lightCube[2*i,j,k,1] << 1 |
                         lightCube[2*i,j,k,2] << 2 |
-                        lightCube[2*i+1,j,k,1] << 3 |
+                        lightCube[2*i+1,j,k,0] << 3 |
                         lightCube[2*i+1,j,k,1] << 4 |
-                        lightCube[2*i+1,j,k,1] << 5
+                        lightCube[2*i+1,j,k,2] << 5
                         )
                 
-                framepacket += char
+                framepacket += chr(char)
     
     
-    port.write(framepacket)
+    port.write(bytearray(framepacket,'utf-8'))
                        
                        
     
@@ -88,5 +86,6 @@ if __name__ == "__main__":
     ports = serial.tools.list_ports.comports()
     print("Pick a Comm port numder: "+str(ports))
     comm = int(input("Selection: "))
-    Main(comm)
-    pass
+    port = serial.Serial("COM"+str(comm),115200)
+    Main(port)
+    cubePort.close()
