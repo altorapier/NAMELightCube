@@ -46,7 +46,11 @@ def Main(port):
         for col in range(3):
             for layer in range(32):
                 lightCube[:,:,:,:] = False
-                lightCube[:,:,layer,col] = True
+                #lightCube[:,:,layer,col] = True
+                
+                lightCube[:,:,layer,0] = True
+                lightCube[:,:,layer,1] = True
+                lightCube[:,:,layer,2] = True
                 
                 Send(cubePort,lightCube)
                 

@@ -19,7 +19,7 @@ LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*
 DrawPriority = np.zeros([LightN[0],LightN[1],LightN[2]],dtype="byte")
 
 #Time step
-dT = 0.02
+dT = 0.025
 
 #GUI disable graphics
 UpdateCanvas = True
@@ -32,13 +32,13 @@ cubePort = None
 SimConfig = {}
 
 SimConfig["Ion_N"] = 25
-SimConfig["Ion_Mass"] = 208
+SimConfig["Ion_Mass"] = 2
 SimConfig["Ion_Position"] = np.array([0.5,0.5,0.95])
 SimConfig["Ion_Velocity"] = np.array([0,0,-1])
 
 SimConfig["Film_Thickness"] = 0.75
 SimConfig["Film_Mass"] = 29
-SimConfig["Film_N_Density"] = 200
+SimConfig["Film_N_Density"] = 50
 SimConfig["Film_SecondaryThreshold"] = 25
 SimConfig["Film_StickThreshold"] = 0.15
 
@@ -53,6 +53,7 @@ class particle:
         #inital condition
         self.Pos = Pos
         self.Vel = Vel
+        self.DisSinceLastCollision = 0
         self.Mass = Mass
         self.Charge = Charge
         #colour
@@ -70,46 +71,57 @@ class particle:
         
         InFilm = (self.Pos[2]<ThinFilm.Thk)
         
+        Dis = np.linalg.norm(self.Vel*dT)
+        
         # Film is sticky and below threshold strongly damp velocity
         if (E < ThinFilm.StickThreshold) & InFilm:
             self.Vel = self.Vel*0.1
         
+        #Electric stopping
+        # if InFilm and E != 0:
+        #     E_lost = Dis * E**4 * 0.000001
+        #     self.Vel = self.Vel * np.sqrt((E-E_lost)*2/self.Mass)
+        
         self.Pos = self.Pos + dT*self.Vel
         
-        Dis = np.linalg.norm(self.Vel*dT)
+        if InFilm:
+            self.DisSinceLastCollision += Dis
         
         #Probablity of Collision
         
-        #Check if in thin film, 50% chance of collision per N_Den distance
-        if ( (Dis/2)>np.random.random()*ThinFilm.N_Den ) & InFilm:
-            #inside film, do the 'monto carlo'
-            
-            # Only store collisions points
-            if self.Trail:
-                self.PastPos.append(self.Pos)
-            
-            #get unit velocity vector of particle
-            UnitVel = self.Vel/np.linalg.norm(self.Vel)
-            
-            #pick random point in space, as contact vector
-            ConVec = np.random.random(3)*2-1
-            ConVec = ConVec/np.linalg.norm(ConVec) #normalize
-            DotProd = np.dot(ConVec,UnitVel)
-            
-
-            if DotProd<0:#mirror for only forward facing collisions
-                ConVec = ConVec - 2*UnitVel*DotProd
-            
-            
-            IntDotVel = np.dot(ConVec,self.Vel)
-            
-            # calculate momentum exchange
-            FinalDotVel = ( (self.Mass-ThinFilm.Mass)/(self.Mass+ThinFilm.Mass) ) * IntDotVel
-            
-            self.Vel = self.Vel + (FinalDotVel-IntDotVel)*ConVec
-            
-            #Return momentum exchange for particle generation
-            return self.Mass*(FinalDotVel-IntDotVel)*ConVec
+        if self.DisSinceLastCollision > ThinFilm.N_Den:
+            #Check if in thin film, 50% chance of collision per N_Den distance
+            if ( 0.5 > np.random.random() ):
+                #inside film, do the 'monto carlo'
+                
+                # Only store collisions points
+                if self.Trail:
+                    self.PastPos.append(self.Pos)
+                
+                #get unit velocity vector of particle
+                UnitVel = self.Vel/np.linalg.norm(self.Vel)
+                
+                #pick random point in space, as contact vector
+                ConVec = np.random.random(3)*2-1
+                ConVec = ConVec/np.linalg.norm(ConVec) #normalize
+                DotProd = np.dot(ConVec,UnitVel)
+                
+    
+                if DotProd<0:#mirror for only forward facing collisions
+                    ConVec = ConVec - 2*UnitVel*DotProd
+                
+                
+                IntDotVel = np.dot(ConVec,self.Vel)
+                
+                # calculate momentum exchange
+                FinalDotVel = ( (self.Mass-ThinFilm.Mass)/(self.Mass+ThinFilm.Mass) ) * IntDotVel
+                
+                self.Vel = self.Vel + (FinalDotVel-IntDotVel)*ConVec
+                
+                #Return momentum exchange for particle generation
+                return self.Mass*(FinalDotVel-IntDotVel)*ConVec
+            else:
+                self.DisSinceLastCollision = 0
         return np.array([0,0,0])
 
 
@@ -146,8 +158,54 @@ class Window(tk.Frame):
         
         self.Angle = 0
         
+        self.SimRunning = False
+        
         self.Draw = tk.Canvas(master,width=self.Size,height=self.Size)
-        self.Draw.pack()
+        self.Draw.grid(column = 0, row = 0)
+        
+        #####  Control buttons #####
+        
+        ControlFrame = tk.Frame(master)
+        ControlFrame.grid(column = 1, row = 0)
+        
+        self.FireButton = tk.Button(ControlFrame,
+                                         text = "Fire",
+                                         command = self.fireSim,
+                                         )
+        self.FireButton.grid(column = 1, row = 2)
+        
+        self.FireButton = tk.Button(ControlFrame,
+                                         text = "Halt",
+                                         command = self.haltSim,
+                                         )
+        self.FireButton.grid(column = 2, row = 2)
+        
+        self.FireButton = tk.Button(ControlFrame,
+                                         text = "Clear",
+                                         command = self.clearSim,
+                                         )
+        self.FireButton.grid(column = 3, row = 2)
+        
+        
+        self.SpeedInput = tk.DoubleVar() 
+        self.SpeedScale = tk.Scale(ControlFrame, variable=self.SpeedInput, from_=99, to=1, orient=tk.VERTICAL)  
+        self.SpeedScale.grid(column = 1, row = 0)
+        
+        self.MassInput = tk.DoubleVar() 
+        self.MassScale = tk.Scale(ControlFrame, variable=self.MassInput, from_=250, to=1, orient=tk.VERTICAL)  
+        self.MassScale.grid(column = 2, row = 0)
+        
+        
+        
+        self.PreviosTime = time.time()
+        self.Steps = 0
+        
+        self.update()
+        
+    
+    def generateSim(self):
+        
+        global dT
         
         self.Film = thinFilm(SimConfig["Film_Thickness"],
                              SimConfig["Film_Mass"],
@@ -159,6 +217,19 @@ class Window(tk.Frame):
         
         self.Particles = []
         
+        Mass = self.MassInput.get()
+        
+        Vel = np.sqrt( self.SpeedInput.get() * 100 ) / Mass * np.array([0,0,-0.1])
+        
+        Vel = self.SpeedInput.get() * np.array([0,0,-0.1])
+        
+        print(Vel)
+        
+        dT = 0.01 / abs(Vel[2])
+        
+        #dT = 0.025
+        
+        totalEnergy = 0
         
         for I in range(SimConfig["Ion_N"]):
             
@@ -166,25 +237,51 @@ class Window(tk.Frame):
                                np.random.random()-0.5,
                                0])
             
-            Ion = particle(SimConfig["Ion_Position"] + RanPos*0.5,
-                           SimConfig["Ion_Velocity"],
-                           SimConfig["Ion_Mass"],
-                           Col = [1,0,0])
+
+            Ion = particle(SimConfig["Ion_Position"] + RanPos*0.1,
+                           Vel,
+                           Mass,
+                           Col = [1,1,1])
             
             Ion.Trail = False
             Ion.TrailCol = [1,0,0]
             Ion.DrawPri = 2
             
+            totalEnergy += Vel[2]**2 * Mass * 0.5
+            
             self.Particles.append(Ion)
         
         
+        self.Film.SecondThreshold = abs(Vel[2]) * Mass / 15
+        
+        self.Film.SecondThreshold = 25
+        
         self.drawParticles()
+    
+    
+    def fireSim(self):
         
-        self.PreviosTime = time.time()
-        self.Steps = 0
+        self.clearSim()
         
-        self.update()
         
+        self.generateSim()
+        
+        
+        self.SimRunning = True
+        print("Firing Ions")
+    
+    def haltSim(self):
+        
+        self.SimRunning = False
+        print("Stop Simulation")
+    
+    def clearSim(self):
+        
+        self.haltSim()
+        
+        self.Draw.delete('all')
+        
+        self.Pacticles = []
     
     def update(self):
         global dT, UpdateCanvas, cubePort, LightCube
@@ -195,44 +292,40 @@ class Window(tk.Frame):
         
         Energy = 0
         
-        for P in self.Particles:
+        if self.SimRunning:
+            for P in self.Particles:
+                
+                M = P.move(self.Film,dT)
+                
+                if type(M) != None:
+                    MagM = np.linalg.norm(M) * 0.5
+                    
+                    # if MagM > 0:
+                    #     CollisionPoint = particle(P.Pos, np.zeros(3),Mass=self.Film.Mass,Col=[0,0,1])
+                    #     NewParticles.append(CollisionPoint)
+                    
+                    if len(self.Particles)<200:
+                        if MagM > self.Film.SecondThreshold:
+                            Secondary = particle(P.Pos, -M/self.Film.Mass,Mass=self.Film.Mass,Col=[1,0,0])
+                            NewParticles.append(Secondary)
+                    
+                    Energy += np.linalg.norm(P.Vel)**2*P.Mass*0.5
             
-            M = P.move(self.Film,dT)
-            if type(M) != None:
-                MagM = np.linalg.norm(M)
-                
-                # if MagM > 0:
-                #     CollisionPoint = particle(P.Pos, np.zeros(3),Mass=self.Film.Mass,Col=[0,0,1])
-                #     NewParticles.append(CollisionPoint)
-                
-                if MagM > self.Film.SecondThreshold:
-                    Secondary = particle(P.Pos, -M/self.Film.Mass,Mass=self.Film.Mass,Col=[0,1,0])
-                    NewParticles.append(Secondary)
-                
-                Energy += np.linalg.norm(P.Vel)**2*P.Mass*0.5
-        
-        #print("Total Energy: {}".format(Energy))
-        
-        self.outputCube()
-        
-        if cubePort != None:
-            Send(cubePort,LightCube)
-        
-        for P in NewParticles:
-            self.Particles.append(P)
-        
-        if UpdateCanvas:
-            self.drawParticles()
+            #print("Total Energy: {}".format(Energy))
             
-        self.Steps += 1
-        
-        if self.Steps > 300:
+            self.outputCube()
+            
             if cubePort != None:
-                cubePort.close()
-            self.plotCube()
-            self.master.destroy()
-        else:
-            self.after(16,self.update)
+                Send(cubePort,LightCube)
+            
+            for P in NewParticles:
+                self.Particles.append(P)
+            
+            if UpdateCanvas:
+                self.drawParticles()
+        
+            
+        self.after(5,self.update)
     
     def drawFilmBoundary(self):
         
@@ -343,13 +436,15 @@ class Window(tk.Frame):
         
         surfacelayer = int( SimConfig["Film_Thickness"] * LightN[2] )
         
-        LightCube[:,:,surfacelayer,2] = True
+        LightCube[:,:,surfacelayer,0] = True
+        LightCube[:,:,surfacelayer,1] = True
+        LightCube[:,:,surfacelayer,2] = False
         
         for P in self.Particles:
             Pos = np.copy(P.Pos)
-            Pos[0] = np.round(Pos[0]*LightN[0])
-            Pos[1] = np.round(Pos[1]*LightN[1])
-            Pos[2] = np.round(Pos[2]*LightN[2])
+            Pos[0] = np.round(Pos[0]*LightN[0] - 0.5)
+            Pos[1] = np.round(Pos[1]*LightN[1] - 0.5)
+            Pos[2] = np.round(Pos[2]*LightN[2] - 0.5)
             
             i = int(Pos[0])
             j = int(Pos[1])
@@ -470,3 +565,6 @@ if __name__=="__main__":
     root.title("Cube display")
 
     Sim.mainloop()
+    
+    cubePort.close()
+    print("close port")
