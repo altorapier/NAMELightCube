@@ -13,6 +13,21 @@ import tkinter as tk
 import matplotlib.pyplot as plt
 import time
 
+import winsound
+import os
+import pygame
+
+pygame.mixer.init()
+pygame.mixer.set_num_channels(20)
+
+
+#Sound1 = pygame.mixer.Sound("07043286_shortv2.wav")
+Sound1 = pygame.mixer.Sound("Chirp0.1ms.wav")
+Sound2 = pygame.mixer.Sound("Chirp0.1msAlto.wav")
+
+MinDelay = 0.05
+
+
 # cube is always 1 unit
 LightN = [8,8,32]
 LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
@@ -67,20 +82,23 @@ class particle:
     
     def move(self,ThinFilm,dT):
         
-        E = np.linalg.norm(self.Vel)*self.Mass*0.5 # Calculate kinetic energy
+        E = np.linalg.norm(self.Vel)**2*self.Mass*0.5 # Calculate kinetic energy
         
         InFilm = (self.Pos[2]<ThinFilm.Thk)
         
-        Dis = np.linalg.norm(self.Vel*dT)
+        Dis = np.linalg.norm(self.Vel)*dT
         
         # Film is sticky and below threshold strongly damp velocity
-        if (E < ThinFilm.StickThreshold) & InFilm:
-            self.Vel = self.Vel*0.1
+        # if (E < ThinFilm.StickThreshold) & InFilm:
+        #     self.Vel = self.Vel*0.1
         
         #Electric stopping
-        # if InFilm and E != 0:
-        #     E_lost = Dis * E**4 * 0.000001
-        #     self.Vel = self.Vel * np.sqrt((E-E_lost)*2/self.Mass)
+        if InFilm and E != 0:
+            E_lost = np.clip(np.power(E,0.5) * 10 * Dis,0,E)
+            
+            fraction = np.sqrt((E-E_lost)*2/self.Mass) / np.linalg.norm(self.Vel)
+            
+            self.Vel = self.Vel * fraction
         
         self.Pos = self.Pos + dT*self.Vel
         
@@ -158,6 +176,8 @@ class Window(tk.Frame):
         
         self.Angle = 0
         
+        self.TimeSinceLastSound = time.perf_counter()
+        
         self.SimRunning = False
         
         self.Draw = tk.Canvas(master,width=self.Size,height=self.Size)
@@ -186,14 +206,18 @@ class Window(tk.Frame):
                                          )
         self.FireButton.grid(column = 3, row = 2)
         
-        
+        SpeedInputText = tk.Label(ControlFrame,text = "Speed")
+        SpeedInputText.grid(column=1,row = 0)
         self.SpeedInput = tk.DoubleVar() 
-        self.SpeedScale = tk.Scale(ControlFrame, variable=self.SpeedInput, from_=99, to=1, orient=tk.VERTICAL)  
-        self.SpeedScale.grid(column = 1, row = 0)
+        self.SpeedScale = tk.Scale(ControlFrame, variable=self.SpeedInput, from_=99, to=10, orient=tk.VERTICAL)  
+        self.SpeedScale.grid(column = 1, row = 1)
         
+        
+        MassInputText = tk.Label(ControlFrame,text = "Mass")
+        MassInputText.grid(column=2,row = 0)
         self.MassInput = tk.DoubleVar() 
-        self.MassScale = tk.Scale(ControlFrame, variable=self.MassInput, from_=250, to=1, orient=tk.VERTICAL)  
-        self.MassScale.grid(column = 2, row = 0)
+        self.MassScale = tk.Scale(ControlFrame, variable=self.MassInput, from_=250, to=4, orient=tk.VERTICAL)  
+        self.MassScale.grid(column = 2, row = 1)
         
         
         
@@ -221,11 +245,11 @@ class Window(tk.Frame):
         
         Vel = np.sqrt( self.SpeedInput.get() * 100 ) / Mass * np.array([0,0,-0.1])
         
-        Vel = self.SpeedInput.get() * np.array([0,0,-0.1])
+        Vel = 0.1*self.SpeedInput.get() * np.array([0,0,-0.1])
         
         print(Vel)
         
-        dT = 0.01 / abs(Vel[2])
+        dT = 0.005 / abs(Vel[2])
         
         #dT = 0.025
         
@@ -235,7 +259,7 @@ class Window(tk.Frame):
             
             RanPos = np.array([np.random.random()-0.5,
                                np.random.random()-0.5,
-                               0])
+                               I*Vel[2]*dT*5])
             
 
             Ion = particle(SimConfig["Ion_Position"] + RanPos*0.1,
@@ -254,7 +278,7 @@ class Window(tk.Frame):
         
         self.Film.SecondThreshold = abs(Vel[2]) * Mass / 15
         
-        self.Film.SecondThreshold = 25
+        self.Film.SecondThreshold = 0.025
         
         self.drawParticles()
     
@@ -298,16 +322,46 @@ class Window(tk.Frame):
                 M = P.move(self.Film,dT)
                 
                 if type(M) != None:
+                    
                     MagM = np.linalg.norm(M) * 0.5
+                    
+                    global Sound1, Sound2, MinDelay
+                    
+                    SoundVolume = np.clip(np.sqrt(MagM)/10,0,0.5)
+                    
+                    try:
+                        if time.perf_counter() - self.TimeSinceLastSound > MinDelay and SoundVolume:
+                            chan = pygame.mixer.find_channel()
+                            chan.set_volume(SoundVolume,SoundVolume)
+                            if 0.5>np.random.random():
+                                chan.play(Sound1)
+                            else:
+                                chan.play(Sound2)
+                            self.TimeSinceLastSound = time.perf_counter() + np.random.random()*MinDelay
+                    except:
+                        pass
+
                     
                     # if MagM > 0:
                     #     CollisionPoint = particle(P.Pos, np.zeros(3),Mass=self.Film.Mass,Col=[0,0,1])
                     #     NewParticles.append(CollisionPoint)
                     
-                    if len(self.Particles)<200:
+                    if len(self.Particles)<500:
                         if MagM > self.Film.SecondThreshold:
-                            Secondary = particle(P.Pos, -M/self.Film.Mass,Mass=self.Film.Mass,Col=[1,0,0])
-                            NewParticles.append(Secondary)
+                            
+                            #limit density of new particles
+                            MinDis = 999
+                            
+                            for NewP in NewParticles:
+                                MinDis = min(MinDis, np.linalg.norm(P.Pos-NewP.Pos))
+                                
+                            for NewP in self.Particles[25:]:
+                                MinDis = min(MinDis, np.linalg.norm(P.Pos-NewP.Pos))
+                            
+                            # Don't generate secondaries close together
+                            if MinDis > 0.01 and len(NewParticles)<25:
+                                Secondary = particle(P.Pos, -M/self.Film.Mass,Mass=self.Film.Mass,Col=[1,0,0])
+                                NewParticles.append(Secondary)
                     
                     Energy += np.linalg.norm(P.Vel)**2*P.Mass*0.5
             
