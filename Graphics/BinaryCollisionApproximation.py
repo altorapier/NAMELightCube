@@ -10,6 +10,8 @@ import serial.tools.list_ports
 
 import numpy as np
 import tkinter as tk
+from tkinter import font as tkFont
+
 import matplotlib.pyplot as plt
 import time
 
@@ -17,15 +19,43 @@ import winsound
 import os
 import pygame
 
-pygame.mixer.init()
-pygame.mixer.set_num_channels(20)
+
+# Table from github repo, https://gist.github.com/GoodmanSciences/c2dd862cd38f21b0ad36b8f96b4bf1ee
+PeriodicTablefFile = "Periodic Table of Elements.csv"
+
+def loadTable(file):
+    """
+    Takes in file outputs ordered list of elements
+    """
+    
+    Elements = []
+    
+    with open(file,"r") as f:     
+        for line in f.readlines():
+            
+            line.strip("\n")
+            
+            info = line.split(",")
+            
+            Elements.append(info)
+    
+    return Elements
 
 
-#Sound1 = pygame.mixer.Sound("07043286_shortv2.wav")
-Sound1 = pygame.mixer.Sound("Chirp0.1ms.wav")
-Sound2 = pygame.mixer.Sound("Chirp0.1msAlto.wav")
+try:
+    pygame.mixer.init()
+    pygame.mixer.set_num_channels(20)
+    
+    
+    #Sound1 = pygame.mixer.Sound("07043286_shortv2.wav")
+    Sound1 = pygame.mixer.Sound("Chirp0.1ms.wav")
+    Sound2 = pygame.mixer.Sound("Chirp0.1msAlto.wav")
+except:
+    print("Failed to start audio mixer")
+    Sound1 = None
+    Sound2 = None
 
-MinDelay = 0.05
+MinDelay = 0.01
 
 
 # cube is always 1 unit
@@ -161,6 +191,12 @@ class Window(tk.Frame):
     This class should handle GUI
     """
     
+    InfoTemplate = """Current Setup:         
+        Speed (Km/sec) : {}
+        Ion: {}
+        Atomic Number: {}
+        Atomic Mass: {}"""
+    
     def __init__(self, master):
         """
         Initial setup of widgets and the general window position
@@ -190,34 +226,59 @@ class Window(tk.Frame):
         
         self.FireButton = tk.Button(ControlFrame,
                                          text = "Fire",
+                                         bg = "red",
                                          command = self.fireSim,
+                                         font=tkFont.Font(size=30)
                                          )
-        self.FireButton.grid(column = 1, row = 2)
+        self.FireButton.grid(column = 1, row = 2,padx=20)
         
         self.FireButton = tk.Button(ControlFrame,
                                          text = "Halt",
+                                         bg = "orange",
                                          command = self.haltSim,
+                                         font=tkFont.Font(size=30)
                                          )
-        self.FireButton.grid(column = 2, row = 2)
+        self.FireButton.grid(column = 2, row = 2,padx=20)
         
         self.FireButton = tk.Button(ControlFrame,
                                          text = "Clear",
+                                         bg = "green",
                                          command = self.clearSim,
+                                         font=tkFont.Font(size=30)
                                          )
-        self.FireButton.grid(column = 3, row = 2)
+        self.FireButton.grid(column = 3, row = 2,padx = 20)
         
         SpeedInputText = tk.Label(ControlFrame,text = "Speed")
         SpeedInputText.grid(column=1,row = 0)
         self.SpeedInput = tk.DoubleVar() 
-        self.SpeedScale = tk.Scale(ControlFrame, variable=self.SpeedInput, from_=99, to=10, orient=tk.VERTICAL)  
+        self.SpeedScale = tk.Scale(ControlFrame,
+                                   variable=self.SpeedInput,
+                                   from_=99,
+                                   to=10,
+                                   orient=tk.VERTICAL,
+                                   showvalue = False,
+                                   length = 200,
+                                   width = 45)  
         self.SpeedScale.grid(column = 1, row = 1)
         
         
         MassInputText = tk.Label(ControlFrame,text = "Mass")
         MassInputText.grid(column=2,row = 0)
         self.MassInput = tk.DoubleVar() 
-        self.MassScale = tk.Scale(ControlFrame, variable=self.MassInput, from_=250, to=4, orient=tk.VERTICAL)  
+        self.MassScale = tk.Scale(ControlFrame,
+                                  variable=self.MassInput,
+                                  from_=118,
+                                  to=1,
+                                  orient=tk.VERTICAL,
+                                  showvalue = False,
+                                  length = 200,
+                                  width = 45)  
         self.MassScale.grid(column = 2, row = 1)
+        
+        
+        self.SetupLabel = tk.Label(ControlFrame,text = self.InfoTemplate)
+        self.SetupLabel.grid(column = 3, row = 1)
+        self.GetSetupInfo()
         
         
         
@@ -229,7 +290,7 @@ class Window(tk.Frame):
     
     def generateSim(self):
         
-        global dT
+        global dT,Elements
         
         self.Film = thinFilm(SimConfig["Film_Thickness"],
                              SimConfig["Film_Mass"],
@@ -242,6 +303,8 @@ class Window(tk.Frame):
         self.Particles = []
         
         Mass = self.MassInput.get()
+        
+        Mass = float(Elements[int(Mass)][3])
         
         Vel = np.sqrt( self.SpeedInput.get() * 100 ) / Mass * np.array([0,0,-0.1])
         
@@ -305,12 +368,34 @@ class Window(tk.Frame):
         
         self.Draw.delete('all')
         
-        self.Pacticles = []
+        self.Particles = []
+        
+        #Update cube display
+        self.outputCube()
+    
+    def GetSetupInfo(self):
+        
+        global Elements
+        
+        Vel = 0.1*self.SpeedInput.get() * np.array([0,0,-0.1])
+        
+        N = self.MassInput.get()
+        
+        Element = Elements[int(N)]
+        
+        self.SetupLabel["text"] = self.InfoTemplate.format(round(Vel[2]*-520),
+                                                            Element[1],
+                                                            Element[0],
+                                                            Element[3]
+                                                            )
+        
     
     def update(self):
         global dT, UpdateCanvas, cubePort, LightCube
         
         NewParticles = []
+        
+        self.GetSetupInfo()
         
         self.Angle = self.Angle + 0.01
         
@@ -327,19 +412,21 @@ class Window(tk.Frame):
                     
                     global Sound1, Sound2, MinDelay
                     
-                    SoundVolume = np.clip(np.sqrt(MagM)/10,0,0.5)
                     
-                    try:
-                        if time.perf_counter() - self.TimeSinceLastSound > MinDelay and SoundVolume:
-                            chan = pygame.mixer.find_channel()
-                            chan.set_volume(SoundVolume,SoundVolume)
-                            if 0.5>np.random.random():
-                                chan.play(Sound1)
-                            else:
-                                chan.play(Sound2)
-                            self.TimeSinceLastSound = time.perf_counter() + np.random.random()*MinDelay
-                    except:
-                        pass
+                    # Check if the mixer startup worked or has a valid audio out
+                    if Sound1 != None:
+                        try:
+                            SoundVolume = np.clip(np.sqrt(MagM)/10,0,0.5)
+                            if time.perf_counter() - self.TimeSinceLastSound > MinDelay and SoundVolume:
+                                chan = pygame.mixer.find_channel()
+                                chan.set_volume(SoundVolume,SoundVolume)
+                                if 0.5>np.random.random():
+                                    chan.play(Sound1)
+                                else:
+                                    chan.play(Sound2)
+                                self.TimeSinceLastSound = time.perf_counter() + np.random.random()*MinDelay
+                        except:
+                            pass
 
                     
                     # if MagM > 0:
@@ -609,9 +696,16 @@ def Send(port,lightCube):
 if __name__=="__main__":
     
     try:
-        cubePort = serial.Serial("COM"+str(17),115200)
+        Ports = serial.tools.list_ports.comports()
+        print(Ports)
+        Selection = int(input("Select Port: "))
+        cubePort = serial.Serial("COM"+str(Selection),115200)
     except:
         print("Could not connect to THE CUBE")
+        
+    #load the elements
+    Elements = loadTable(PeriodicTablefFile)
+    print("Loaded the elements")
     
     #Make and start main window
     root = tk.Tk()
