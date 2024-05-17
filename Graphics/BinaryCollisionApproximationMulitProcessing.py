@@ -197,7 +197,7 @@ class Window(tk.Frame):
     """
     
     InfoTemplate = """Current Setup:         
-        Energy (KeV) : {}
+        Speed (Km/sec) : {}
         Ion: {}
         Atomic Number: {}
         Atomic Mass: {}"""
@@ -263,13 +263,13 @@ class Window(tk.Frame):
                                          )
         self.FireButton.grid(column = 3, row = 2,padx = 20)
         
-        SpeedInputText = tk.Label(ControlFrame,text = "Energy")
+        SpeedInputText = tk.Label(ControlFrame,text = "Speed")
         SpeedInputText.grid(column=1,row = 0)
         self.SpeedInput = tk.DoubleVar() 
         self.SpeedScale = tk.Scale(ControlFrame,
                                    variable=self.SpeedInput,
-                                   from_=40,
-                                   to=5,
+                                   from_=99,
+                                   to=10,
                                    orient=tk.VERTICAL,
                                    showvalue = False,
                                    length = 200,
@@ -323,7 +323,9 @@ class Window(tk.Frame):
         
         Vel = np.sqrt( self.SpeedInput.get() * 100 ) / Mass * np.array([0,0,-0.1])
         
-        Vel = 0.2*self.SpeedInput.get() * np.array([0,0,-0.1])
+        Vel = 0.1*self.SpeedInput.get() * np.array([0,0,-0.1])
+        
+        print(Vel)
         
         dT = 0.005 / abs(Vel[2])
         
@@ -413,7 +415,7 @@ class Window(tk.Frame):
         
         Element = Elements[int(N)]
         
-        self.SetupLabel["text"] = self.InfoTemplate.format(round(self.SpeedInput.get()),
+        self.SetupLabel["text"] = self.InfoTemplate.format(round(Vel[2]*-520),
                                                             Element[1],
                                                             Element[0],
                                                             Element[3]
@@ -581,106 +583,6 @@ class Window(tk.Frame):
                     Y2 = self.Size * (1-P.PastPos[n+1][2])
                     
                     self.Draw.coords(ID,X1,Y1,X2,Y2)
-                    
-                    
-                    
-    
-    def convertColour(self,Col):
-        
-        Str = "#"
-        Str=Str+"{:02x}".format(round(Col[0]*255))
-        Str=Str+"{:02x}".format(round(Col[1]*255))
-        Str=Str+"{:02x}".format(round(Col[2]*255))
-
-            
-        return Str
-    
-    
-    def outputCube(self):
-        
-        global LightCube,LightN,DrawPriority,SimConfig
-        
-        Start = time.perf_counter()
-        
-        LightCube[:,:,:,:] = False #clear cube
-        DrawPriority[:,:,:] = 0 #Clear Draw Priority
-        
-        surfacelayer = int( SimConfig["Film_Thickness"] * LightN[2] )
-        
-        LightCube[:,:,surfacelayer,0] = True
-        LightCube[:,:,surfacelayer,1] = True
-        LightCube[:,:,surfacelayer,2] = False
-        
-        for P in self.Particles:
-            Pos = np.copy(P.Pos)
-            Pos[0] = np.round(Pos[0]*LightN[0] - 0.5)
-            Pos[1] = np.round(Pos[1]*LightN[1] - 0.5)
-            Pos[2] = np.round(Pos[2]*LightN[2] - 0.5)
-            
-            i = int(Pos[0])
-            j = int(Pos[1])
-            k = int(Pos[2])
-            
-            # pShape = [[0,0,0],[0,0,1],[0,1,0],[0,1,1],
-            #           [1,0,0],[1,0,1],[1,1,0],[1,1,1]]
-            
-            pShape = [[0,0,0]]
-            
-            if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
-                if DrawPriority[i,j,k] < P.DrawPri: #Check is the draw priority is larger
-                    if P.Col[0]>0.5:
-                        for S in pShape:
-                            LightCube[i+S[0],j+S[1],k+S[2],0] = True
-                    if P.Col[1]>0.5:
-                        for S in pShape:
-                            LightCube[i+S[0],j+S[1],k+S[2],1] = True
-                    if P.Col[2]>0.5:
-                        for S in pShape:
-                            LightCube[i+S[0],j+S[1],k+S[2],2] = True
-                
-                    DrawPriority[i,j,k] = P.DrawPri
-            
-            # Draw any trails for the particle
-            if P.Trail:
-                N = len(P.PastPos)
-                self.drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
-                for n in range(N-1):
-                    self.drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
-
-        End = time.perf_counter()
-        
-        #print("Seconds to draw cube: {}".format((End-Start)))
-    
-    
-    def drawLineCube(self,P1,P2,Col,DrawPri):
-        
-        global LightCube,LightN,DrawPriority
-        N = int(np.linalg.norm(P2-P1)*max(LightN)*2) # Number of sample points
-        if N==0:
-            return
-        for n in range(N+1):
-            
-            Pos = ( n/N * (P2-P1) + P1)
-            
-            Pos[0] = np.round(Pos[0]*LightN[0])
-            Pos[1] = np.round(Pos[1]*LightN[1])
-            Pos[2] = np.round(Pos[2]*LightN[2])
-            
-            i = int(Pos[0])
-            j = int(Pos[1])
-            k = int(Pos[2])
-            
-            #Check if in bounds
-            if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
-                if DrawPriority[i,j,k] < DrawPri:
-                    if Col[0]>0.5:
-                        LightCube[i,j,k,0] = True
-                    if Col[1]>0.5:
-                        LightCube[i,j,k,1] = True
-                    if Col[2]>0.5:
-                        LightCube[i,j,k,2] = True
-                
-                    DrawPriority[i,j,k] = DrawPri
     
     def plotCube(self):
         
@@ -698,6 +600,116 @@ class Window(tk.Frame):
         ax.voxels(voxelarray, facecolors=colors)
 
         plt.show()
+                    
+                    
+                    
+    
+    def convertColour(self,Col):
+        
+        Str = "#"
+        Str=Str+"{:02x}".format(round(Col[0]*255))
+        Str=Str+"{:02x}".format(round(Col[1]*255))
+        Str=Str+"{:02x}".format(round(Col[2]*255))
+
+            
+        return Str
+
+
+
+
+def CommControlThread(CommPortID):
+    
+    cubePort = serial.Serial("COM"+str(Selection),115200)
+    
+    
+    
+
+    
+def outputCube():
+    
+    global LightCube,LightN,DrawPriority
+    
+    Start = time.perf_counter()
+    
+    LightCube[:,:,:,:] = False #clear cube
+    DrawPriority[:,:,:] = 0 #Clear Draw Priority
+    
+    surfacelayer = int( SimConfig["Film_Thickness"] * LightN[2] )
+    
+    LightCube[:,:,surfacelayer,0] = True
+    LightCube[:,:,surfacelayer,1] = True
+    LightCube[:,:,surfacelayer,2] = False
+    
+    for P in self.Particles:
+        Pos = np.copy(P.Pos)
+        Pos[0] = np.round(Pos[0]*LightN[0] - 0.5)
+        Pos[1] = np.round(Pos[1]*LightN[1] - 0.5)
+        Pos[2] = np.round(Pos[2]*LightN[2] - 0.5)
+        
+        i = int(Pos[0])
+        j = int(Pos[1])
+        k = int(Pos[2])
+        
+        # pShape = [[0,0,0],[0,0,1],[0,1,0],[0,1,1],
+        #           [1,0,0],[1,0,1],[1,1,0],[1,1,1]]
+        
+        pShape = [[0,0,0]]
+        
+        if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
+            if DrawPriority[i,j,k] < P.DrawPri: #Check is the draw priority is larger
+                if P.Col[0]>0.5:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],0] = True
+                if P.Col[1]>0.5:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],1] = True
+                if P.Col[2]>0.5:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],2] = True
+            
+                DrawPriority[i,j,k] = P.DrawPri
+        
+        # Draw any trails for the particle
+        if P.Trail:
+            N = len(P.PastPos)
+            self.drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
+            for n in range(N-1):
+                self.drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
+
+    End = time.perf_counter()
+    
+    #print("Seconds to draw cube: {}".format((End-Start)))
+
+
+def drawLineCube(self,P1,P2,Col,DrawPri):
+    
+    global LightCube,LightN,DrawPriority
+    N = int(np.linalg.norm(P2-P1)*max(LightN)*2) # Number of sample points
+    if N==0:
+        return
+    for n in range(N+1):
+        
+        Pos = ( n/N * (P2-P1) + P1)
+        
+        Pos[0] = np.round(Pos[0]*LightN[0])
+        Pos[1] = np.round(Pos[1]*LightN[1])
+        Pos[2] = np.round(Pos[2]*LightN[2])
+        
+        i = int(Pos[0])
+        j = int(Pos[1])
+        k = int(Pos[2])
+        
+        #Check if in bounds
+        if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
+            if DrawPriority[i,j,k] < DrawPri:
+                if Col[0]>0.5:
+                    LightCube[i,j,k,0] = True
+                if Col[1]>0.5:
+                    LightCube[i,j,k,1] = True
+                if Col[2]>0.5:
+                    LightCube[i,j,k,2] = True
+            
+                DrawPriority[i,j,k] = DrawPri
             
 
 def Send(port,lightCube):
@@ -731,7 +743,6 @@ if __name__=="__main__":
             raise
         print(*Ports)
         Selection = int(input("Select Port: "))
-        cubePort = serial.Serial("COM"+str(Selection),115200)
     except:
         print("Could not connect to THE CUBE")
         
