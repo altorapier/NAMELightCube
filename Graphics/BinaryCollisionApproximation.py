@@ -323,7 +323,7 @@ class Window(tk.Frame):
         
         Vel = np.sqrt( self.SpeedInput.get() * 100 ) / Mass * np.array([0,0,-0.1])
         
-        Vel = 0.2*self.SpeedInput.get() * np.array([0,0,-0.1])
+        Vel = 0.5*self.SpeedInput.get() * np.array([0,0,-0.1])
         
         dT = 0.005 / abs(Vel[2])
         

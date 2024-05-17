@@ -46,20 +46,6 @@ def loadTable(file):
     return Elements
 
 
-try:
-    raise
-    pygame.mixer.init()
-    pygame.mixer.set_num_channels(20)
-    
-    
-    #Sound1 = pygame.mixer.Sound("07043286_shortv2.wav")
-    Sound1 = pygame.mixer.Sound("Chirp0.1ms.wav")
-    Sound2 = pygame.mixer.Sound("Chirp0.1msAlto.wav")
-except:
-    print("Failed to start audio mixer")
-    Sound1 = None
-    Sound2 = None
-
 MinDelay = 0.01
 
 
@@ -197,15 +183,22 @@ class Window(tk.Frame):
     """
     
     InfoTemplate = """Current Setup:         
-        Speed (Km/sec) : {}
+        Energy (KeV) : {}
         Ion: {}
         Atomic Number: {}
         Atomic Mass: {}"""
     
-    def __init__(self, master):
+    def __init__(self, master,CommPortID):
         """
         Initial setup of widgets and the general window position
         """
+        
+        self.PipeRecv, self.PipeSend = Pipe(duplex=True)
+        
+        self.Worker = Process(target=commControlThread, args=(CommPortID,self.PipeSend))
+        self.Worker.start()
+        
+        print("started comm worker")
         
         global SimConfig, cubePort
         
@@ -263,13 +256,15 @@ class Window(tk.Frame):
                                          )
         self.FireButton.grid(column = 3, row = 2,padx = 20)
         
-        SpeedInputText = tk.Label(ControlFrame,text = "Speed")
+        SpeedInputText = tk.Label(ControlFrame,
+                                  text = "Energy",
+                                  font=tkFont.Font(size=15))
         SpeedInputText.grid(column=1,row = 0)
         self.SpeedInput = tk.DoubleVar() 
         self.SpeedScale = tk.Scale(ControlFrame,
                                    variable=self.SpeedInput,
-                                   from_=99,
-                                   to=10,
+                                   from_=40,
+                                   to=5,
                                    orient=tk.VERTICAL,
                                    showvalue = False,
                                    length = 200,
@@ -277,7 +272,9 @@ class Window(tk.Frame):
         self.SpeedScale.grid(column = 1, row = 1)
         
         
-        MassInputText = tk.Label(ControlFrame,text = "Mass")
+        MassInputText = tk.Label(ControlFrame,
+                                 text = "Mass",
+                                 font=tkFont.Font(size=15))
         MassInputText.grid(column=2,row = 0)
         self.MassInput = tk.DoubleVar() 
         self.MassScale = tk.Scale(ControlFrame,
@@ -291,7 +288,9 @@ class Window(tk.Frame):
         self.MassScale.grid(column = 2, row = 1)
         
         
-        self.SetupLabel = tk.Label(ControlFrame,text = self.InfoTemplate)
+        self.SetupLabel = tk.Label(ControlFrame,
+                                   text = self.InfoTemplate,
+                                   font=tkFont.Font(size=15))
         self.SetupLabel.grid(column = 3, row = 1)
         self.GetSetupInfo()
         
@@ -323,7 +322,7 @@ class Window(tk.Frame):
         
         Vel = np.sqrt( self.SpeedInput.get() * 100 ) / Mass * np.array([0,0,-0.1])
         
-        Vel = 0.1*self.SpeedInput.get() * np.array([0,0,-0.1])
+        Vel = 0.3*self.SpeedInput.get() * np.array([0,0,-0.1])
         
         print(Vel)
         
@@ -387,10 +386,7 @@ class Window(tk.Frame):
         
         self.Particles = []
         
-        #Update cube display
-        if cubePort != None:
-            self.outputCube()
-            Send(cubePort,LightCube)
+        self.PipeRecv.send(self.Particles)
             
     def elementClick(self,event):
         global ImagePositions
@@ -415,7 +411,7 @@ class Window(tk.Frame):
         
         Element = Elements[int(N)]
         
-        self.SetupLabel["text"] = self.InfoTemplate.format(round(Vel[2]*-520),
+        self.SetupLabel["text"] = self.InfoTemplate.format(round(self.SpeedInput.get()),
                                                             Element[1],
                                                             Element[0],
                                                             Element[3]
@@ -486,10 +482,7 @@ class Window(tk.Frame):
             
             #print("Total Energy: {}".format(Energy))
             
-            self.outputCube()
-            
-            if cubePort != None:
-                Send(cubePort,LightCube)
+            self.PipeRecv.send(self.Particles)
             
             for P in NewParticles:
                 self.Particles.append(P)
@@ -617,19 +610,39 @@ class Window(tk.Frame):
 
 
 
-def CommControlThread(CommPortID):
+def commControlThread(CommPortID,Pipe):
     
-    cubePort = serial.Serial("COM"+str(Selection),115200)
+    
+    # cube is always 1 unit
+    LightN = [8,8,32]
+    LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
+    DrawPriority = np.zeros([LightN[0],LightN[1],LightN[2]],dtype="byte")
+    
+    try:
+        cubePort = serial.Serial("COM"+str(CommPortID),115200)
+        print("connected to cube")
+    except:
+        cubePort = None
+        print("Failed to connect to cube")
+        
+    Particles = []
+    
+    
+    
+    while True:
+        if Pipe.poll():
+            Particles = Pipe.recv()
+        
+        LightCube = outputCube(Particles, LightCube, LightN, DrawPriority)
+        
+        if cubePort != None:
+            Send(cubePort,LightCube)
     
     
     
 
     
-def outputCube():
-    
-    global LightCube,LightN,DrawPriority
-    
-    Start = time.perf_counter()
+def outputCube(Particles,LightCube,LightN,DrawPriority):
     
     LightCube[:,:,:,:] = False #clear cube
     DrawPriority[:,:,:] = 0 #Clear Draw Priority
@@ -640,7 +653,7 @@ def outputCube():
     LightCube[:,:,surfacelayer,1] = True
     LightCube[:,:,surfacelayer,2] = False
     
-    for P in self.Particles:
+    for P in Particles:
         Pos = np.copy(P.Pos)
         Pos[0] = np.round(Pos[0]*LightN[0] - 0.5)
         Pos[1] = np.round(Pos[1]*LightN[1] - 0.5)
@@ -672,16 +685,14 @@ def outputCube():
         # Draw any trails for the particle
         if P.Trail:
             N = len(P.PastPos)
-            self.drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
+            drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
             for n in range(N-1):
-                self.drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
-
-    End = time.perf_counter()
+                drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
     
-    #print("Seconds to draw cube: {}".format((End-Start)))
+    return LightCube
 
 
-def drawLineCube(self,P1,P2,Col,DrawPri):
+def drawLineCube(P1,P2,Col,DrawPri):
     
     global LightCube,LightN,DrawPriority
     N = int(np.linalg.norm(P2-P1)*max(LightN)*2) # Number of sample points
@@ -738,12 +749,26 @@ def Send(port,lightCube):
 if __name__=="__main__":
     
     try:
+        pygame.mixer.init()
+        pygame.mixer.set_num_channels(20)
+        
+        
+        #Sound1 = pygame.mixer.Sound("07043286_shortv2.wav")
+        Sound1 = pygame.mixer.Sound("Chirp0.1ms.wav")
+        Sound2 = pygame.mixer.Sound("Chirp0.1msAlto.wav")
+    except:
+        print("Failed to start audio mixer")
+        Sound1 = None
+        Sound2 = None
+    
+    try:
         Ports = serial.tools.list_ports.comports()
         if len(Ports)==0:
             raise
         print(*Ports)
-        Selection = int(input("Select Port: "))
+        CommPortID = int(input("Select Port: "))
     except:
+        CommPortID = None
         print("Could not connect to THE CUBE")
         
     #load the elements
@@ -752,7 +777,7 @@ if __name__=="__main__":
     
     #Make and start main window
     root = tk.Tk()
-    Sim = Window(root)
+    Sim = Window(root,CommPortID)
     root.title("Cube display")
 
     Sim.mainloop()
