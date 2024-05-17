@@ -11,6 +11,7 @@ import serial.tools.list_ports
 import numpy as np
 import tkinter as tk
 from tkinter import font as tkFont
+from PIL import Image,ImageTk
 
 import matplotlib.pyplot as plt
 import time
@@ -22,6 +23,7 @@ import pygame
 
 # Table from github repo, https://gist.github.com/GoodmanSciences/c2dd862cd38f21b0ad36b8f96b4bf1ee
 PeriodicTablefFile = "Periodic Table of Elements.csv"
+ImagePositions = np.genfromtxt("ElementImagePositions.txt")
 
 def loadTable(file):
     """
@@ -43,6 +45,7 @@ def loadTable(file):
 
 
 try:
+    raise
     pygame.mixer.init()
     pygame.mixer.set_num_channels(20)
     
@@ -217,12 +220,22 @@ class Window(tk.Frame):
         self.SimRunning = False
         
         self.Draw = tk.Canvas(master,width=self.Size,height=self.Size)
-        self.Draw.grid(column = 0, row = 0)
+        self.Draw.grid(column = 0, row = 0,rowspan=2)
+        
+        #####Periodic table element selector ####
+        
+        self.Table = tk.Canvas(master,width = 600, height=318)
+        self.Table.grid(column = 1, row = 0)
+        
+        self.img= tk.PhotoImage(file="Wiki - Periodic table.png")
+        imageCanvas = self.Table.create_image(0, 0, image=self.img,anchor = tk.NW)
+        
+        self.Table.bind("<Button-1>", self.elementClick)
         
         #####  Control buttons #####
         
         ControlFrame = tk.Frame(master)
-        ControlFrame.grid(column = 1, row = 0)
+        ControlFrame.grid(column = 1, row = 1)
         
         self.FireButton = tk.Button(ControlFrame,
                                          text = "Fire",
@@ -364,6 +377,8 @@ class Window(tk.Frame):
     
     def clearSim(self):
         
+        global cubePort
+        
         self.haltSim()
         
         self.Draw.delete('all')
@@ -371,7 +386,29 @@ class Window(tk.Frame):
         self.Particles = []
         
         #Update cube display
-        self.outputCube()
+        if cubePort != None:
+            self.outputCube()
+            Send(cubePort,LightCube)
+            
+    def elementClick(self,event):
+        global ImagePositions
+        
+        # image dimension
+        width = 550
+        height = 290
+        
+        for N in range(len(ImagePositions)):
+            E = ImagePositions[N]
+            if abs(event.x-E[0])<13 and abs(event.y-E[1])<13:
+                self.MassInput.set(N+1)
+                break
+        
+        
+        
+        
+        
+        
+        
     
     def GetSetupInfo(self):
         
@@ -697,7 +734,9 @@ if __name__=="__main__":
     
     try:
         Ports = serial.tools.list_ports.comports()
-        print(Ports)
+        if len(Ports)==0:
+            raise
+        print(*Ports)
         Selection = int(input("Select Port: "))
         cubePort = serial.Serial("COM"+str(Selection),115200)
     except:
