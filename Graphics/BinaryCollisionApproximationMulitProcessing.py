@@ -23,30 +23,9 @@ import pygame
 from multiprocessing import Process, Queue, Pipe
 
 
-# Table from github repo, https://gist.github.com/GoodmanSciences/c2dd862cd38f21b0ad36b8f96b4bf1ee
-PeriodicTablefFile = "Periodic Table of Elements.csv"
-ImagePositions = np.genfromtxt("ElementImagePositions.txt")
-
-def loadTable(file):
-    """
-    Takes in file outputs ordered list of elements
-    """
-    
-    Elements = []
-    
-    with open(file,"r") as f:     
-        for line in f.readlines():
-            
-            line.strip("\n")
-            
-            info = line.split(",")
-            
-            Elements.append(info)
-    
-    return Elements
-
-
 MinDelay = 0.01
+
+SurfaceOnly = False
 
 
 # cube is always 1 unit
@@ -77,6 +56,28 @@ SimConfig["Film_Mass"] = 29
 SimConfig["Film_N_Density"] = 40
 SimConfig["Film_SecondaryThreshold"] = 25
 SimConfig["Film_StickThreshold"] = 0.15
+
+# Table from github repo, https://gist.github.com/GoodmanSciences/c2dd862cd38f21b0ad36b8f96b4bf1ee
+PeriodicTablefFile = "Periodic Table of Elements.csv"
+ImagePositions = np.genfromtxt("ElementImagePositions.txt")
+
+def loadTable(file):
+    """
+    Takes in file outputs ordered list of elements
+    """
+    
+    Elements = []
+    
+    with open(file,"r") as f:     
+        for line in f.readlines():
+            
+            line.strip("\n")
+            
+            info = line.split(",")
+            
+            Elements.append(info)
+    
+    return Elements
 
 
 # Base particle class
@@ -405,6 +406,11 @@ class Window(tk.Frame):
             DelPar = []
             
             for Pn in range(len(self.Particles)):
+                
+                #Skip any particle no in the film
+                if self.Particles[Pn].Pos[2] > 0.75:
+                    continue
+                
                 R = np.random.rand()
                 #Do nothing
                 if R*T < 0.05:
@@ -413,7 +419,7 @@ class Window(tk.Frame):
                 elif R*T < 0.8:
                     self.Particles[Pn].Pos += (np.random.random(3)-np.array([0.5,0.5,0.5]))*0.01
                     if self.Particles[Pn].Pos[2] > 0.75:
-                        self.Particles[Pn].Pos[2] = 0.75
+                        self.Particles[Pn].Pos[2] = 0.749
                 else:
                     if Pn > 25:
                         DelPar.append(Pn)
@@ -687,14 +693,22 @@ def commControlThread(CommPortID,Pipe):
     
 def outputCube(Particles,LightCube,LightN,DrawPriority):
     
+    global SurfaceOnly
+    
     LightCube[:,:,:,:] = False #clear cube
     DrawPriority[:,:,:] = 0 #Clear Draw Priority
     
     surfacelayer = int( SimConfig["Film_Thickness"] * LightN[2] )
     
-    LightCube[:,:,surfacelayer,0] = True
-    LightCube[:,:,surfacelayer,1] = True
-    LightCube[:,:,surfacelayer,2] = False
+    
+    if SurfaceOnly:
+        LightCube[:,:,surfacelayer,0] = True
+        LightCube[:,:,surfacelayer,1] = True
+        LightCube[:,:,surfacelayer,2] = False
+    else:
+        LightCube[:,:,:surfacelayer,0] = True
+        LightCube[:,:,:surfacelayer,1] = True
+        LightCube[:,:,:surfacelayer,2] = False
     
     for P in Particles:
         Pos = np.copy(P.Pos)
@@ -716,12 +730,21 @@ def outputCube(Particles,LightCube,LightN,DrawPriority):
                 if P.Col[0]>0.5:
                     for S in pShape:
                         LightCube[i+S[0],j+S[1],k+S[2],0] = True
+                else:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],0] = False
                 if P.Col[1]>0.5:
                     for S in pShape:
                         LightCube[i+S[0],j+S[1],k+S[2],1] = True
+                else:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],1] = False
                 if P.Col[2]>0.5:
                     for S in pShape:
                         LightCube[i+S[0],j+S[1],k+S[2],2] = True
+                else:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],2] = False
             
                 DrawPriority[i,j,k] = P.DrawPri
         
