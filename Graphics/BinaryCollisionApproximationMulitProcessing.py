@@ -74,7 +74,7 @@ SimConfig["Ion_Velocity"] = np.array([0,0,-1])
 
 SimConfig["Film_Thickness"] = 0.75
 SimConfig["Film_Mass"] = 29
-SimConfig["Film_N_Density"] = 50
+SimConfig["Film_N_Density"] = 40
 SimConfig["Film_SecondaryThreshold"] = 25
 SimConfig["Film_StickThreshold"] = 0.15
 
@@ -115,7 +115,7 @@ class particle:
         
         #Electric stopping
         if InFilm and E != 0:
-            E_lost = np.clip(np.power(E,0.5) * 10 * Dis,0,E)
+            E_lost = np.clip(np.power(E,0.5) * 5 * Dis,0,E)
             
             fraction = np.sqrt((E-E_lost)*2/self.Mass) / np.linalg.norm(self.Vel)
             
@@ -256,6 +256,14 @@ class Window(tk.Frame):
                                          )
         self.FireButton.grid(column = 3, row = 2,padx = 20)
         
+        self.AnnealButton = tk.Button(master,
+                                         text = "Anneal",
+                                         bg = "grey",
+                                         command = self.annealSim,
+                                         font=tkFont.Font(size=30)
+                                         )
+        self.AnnealButton.grid(column = 0, row = 1,padx = 20)
+        
         SpeedInputText = tk.Label(ControlFrame,
                                   text = "Energy",
                                   font=tkFont.Font(size=15))
@@ -324,8 +332,6 @@ class Window(tk.Frame):
         
         Vel = 0.3*self.SpeedInput.get() * np.array([0,0,-0.1])
         
-        print(Vel)
-        
         dT = 0.005 / abs(Vel[2])
         
         #dT = 0.025
@@ -387,6 +393,42 @@ class Window(tk.Frame):
         self.Particles = []
         
         self.PipeRecv.send(self.Particles)
+    
+    def annealSim(self):
+        
+        self.haltSim()
+        
+        Trange = np.append(np.linspace(0,1,50),np.linspace(1,0,50))
+        
+        for T in Trange:
+            
+            DelPar = []
+            
+            for Pn in range(len(self.Particles)):
+                R = np.random.rand()
+                #Do nothing
+                if R*T < 0.05:
+                    continue
+                #Random move only x/y plane?
+                elif R*T < 0.8:
+                    self.Particles[Pn].Pos += (np.random.random(3)-np.array([0.5,0.5,0.5]))*0.01
+                    if self.Particles[Pn].Pos[2] > 0.75:
+                        self.Particles[Pn].Pos[2] = 0.75
+                else:
+                    if Pn > 25:
+                        DelPar.append(Pn)
+            
+            for Pn in DelPar[-1::-1]:
+                self.Draw.delete(self.Particles[Pn].ID)
+                self.Particles.pop(Pn)
+            
+            self.drawParticles()
+            
+            self.PipeRecv.send(self.Particles)
+            
+            self.Draw.update()
+            
+            time.sleep(0.016)
             
     def elementClick(self,event):
         global ImagePositions
@@ -397,6 +439,7 @@ class Window(tk.Frame):
             if abs(event.x-E[0])<13 and abs(event.y-E[1])<13:
                 self.MassInput.set(N+1)
                 break
+        
 
         
         
@@ -436,7 +479,7 @@ class Window(tk.Frame):
                 
                 if type(M) != None:
                     
-                    MagM = np.linalg.norm(M) * 0.5
+                    MagM = np.linalg.norm(M) * 1
                     
                     global Sound1, Sound2, MinDelay
                     

@@ -263,6 +263,14 @@ class Window(tk.Frame):
                                          )
         self.FireButton.grid(column = 3, row = 2,padx = 20)
         
+        self.AnnealButton = tk.Button(master,
+                                         text = "Anneal",
+                                         bg = "grey",
+                                         command = self.annealSim,
+                                         font=tkFont.Font(size=30)
+                                         )
+        self.AnnealButton.grid(column = 0, row = 1,padx = 20)
+        
         SpeedInputText = tk.Label(ControlFrame,text = "Energy")
         SpeedInputText.grid(column=1,row = 0)
         self.SpeedInput = tk.DoubleVar() 
@@ -388,7 +396,9 @@ class Window(tk.Frame):
         #Update cube display
         if cubePort != None:
             self.outputCube()
-            Send(cubePort,LightCube)
+            Send(cubePort,LightCube)    
+        
+        
             
     def elementClick(self,event):
         global ImagePositions
