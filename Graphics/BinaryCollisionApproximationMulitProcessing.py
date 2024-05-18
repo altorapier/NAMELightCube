@@ -706,9 +706,45 @@ def outputCube(Particles,LightCube,LightN,DrawPriority):
         LightCube[:,:,surfacelayer,1] = True
         LightCube[:,:,surfacelayer,2] = False
     else:
-        LightCube[:,:,:surfacelayer,0] = True
-        LightCube[:,:,:surfacelayer,1] = True
-        LightCube[:,:,:surfacelayer,2] = False
+        LightCube[:,:,surfacelayer,0] = True
+        LightCube[:,:,surfacelayer,1] = True
+        LightCube[:,:,surfacelayer,2] = False
+        
+        # LightCube[:,:,0,0] = True
+        # LightCube[:,:,0,1] = True
+        # LightCube[:,:,0,2] = False
+        
+        LightCube[0,0,:surfacelayer,0] = True
+        LightCube[0,0,:surfacelayer,1] = True
+        LightCube[0,0,:surfacelayer,2] = False
+        
+        LightCube[0,-1,:surfacelayer,0] = True
+        LightCube[0,-1,:surfacelayer,1] = True
+        LightCube[0,-1,:surfacelayer,2] = False
+        
+        LightCube[-1,0,:surfacelayer,0] = True
+        LightCube[-1,0,:surfacelayer,1] = True
+        LightCube[-1,0,:surfacelayer,2] = False
+        
+        LightCube[-1,-1,:surfacelayer,0] = True
+        LightCube[-1,-1,:surfacelayer,1] = True
+        LightCube[-1,-1,:surfacelayer,2] = False
+        
+        LightCube[:,0,0,0] = True
+        LightCube[:,0,0,1] = True
+        LightCube[:,0,0,2] = False
+        
+        LightCube[:,-1,0,0] = True
+        LightCube[:,-1,0,1] = True
+        LightCube[:,-1,0,2] = False
+        
+        LightCube[0,:,0,0] = True
+        LightCube[0,:,0,1] = True
+        LightCube[0,:,0,2] = False
+        
+        LightCube[-1,:,0,0] = True
+        LightCube[-1,:,0,1] = True
+        LightCube[-1,:,0,2] = False
     
     for P in Particles:
         Pos = np.copy(P.Pos)
@@ -847,6 +883,3 @@ if __name__=="__main__":
     root.title("Cube display")
 
     Sim.mainloop()
-    
-    cubePort.close()
-    print("close port")
