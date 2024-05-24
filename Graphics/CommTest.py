@@ -15,26 +15,6 @@ import time
 lightCube = np.zeros([8,8,32,3],dtype='bool')
 
 
-# LightCube[:,:,10,0] = True
-# LightCube[:,:,11,1] = True
-# LightCube[:,:,12,2] = True
-
-
-
-# voxelarray = LightCube[:,:,:,0] | LightCube[:,:,:,1] | LightCube[:,:,:,2]
-
-# colors = np.empty(voxelarray.shape, dtype=object)
-# colors[LightCube[:,:,:,0]] = 'red'
-# colors[LightCube[:,:,:,1]] = 'green'
-# colors[LightCube[:,:,:,2]] = 'blue'
-
-# # and plot everything
-# ax = plt.figure().add_subplot(projection='3d')
-# ax.voxels(voxelarray, facecolors=colors)
-
-# plt.show()
-
-
 def Main(port):
     
     global lightCube

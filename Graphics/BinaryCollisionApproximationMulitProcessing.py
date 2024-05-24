@@ -454,8 +454,6 @@ class Window(tk.Frame):
         
         global Elements
         
-        Vel = 0.1*self.SpeedInput.get() * np.array([0,0,-0.1])
-        
         N = self.MassInput.get()
         
         Element = Elements[int(N)]
@@ -657,7 +655,8 @@ class Window(tk.Frame):
         return Str
 
 
-
+#####################################################
+#####################################################
 
 def commControlThread(CommPortID,Pipe):
     
@@ -687,8 +686,8 @@ def commControlThread(CommPortID,Pipe):
         if cubePort != None:
             Send(cubePort,LightCube)
     
-    
-    
+#####################################################
+#####################################################
 
     
 def outputCube(Particles,LightCube,LightN,DrawPriority):

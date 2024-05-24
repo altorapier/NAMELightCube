@@ -417,8 +417,6 @@ class Window(tk.Frame):
         
         global Elements
         
-        Vel = 0.1*self.SpeedInput.get() * np.array([0,0,-0.1])
-        
         N = self.MassInput.get()
         
         Element = Elements[int(N)]
@@ -610,8 +608,6 @@ class Window(tk.Frame):
         
         global LightCube,LightN,DrawPriority,SimConfig
         
-        Start = time.perf_counter()
-        
         LightCube[:,:,:,:] = False #clear cube
         DrawPriority[:,:,:] = 0 #Clear Draw Priority
         
@@ -656,8 +652,6 @@ class Window(tk.Frame):
                 self.drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
                 for n in range(N-1):
                     self.drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
-
-        End = time.perf_counter()
         
         #print("Seconds to draw cube: {}".format((End-Start)))
     
