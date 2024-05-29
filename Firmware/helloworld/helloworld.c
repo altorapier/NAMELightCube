@@ -11,6 +11,7 @@ int main() {
 
     while(true){
     ch = getchar();
+    //wait for the overflow at 2**16 bytes
     if(N == 0){
         printf("0");
     }

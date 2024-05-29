@@ -72,4 +72,3 @@ if __name__ == "__main__":
     comm = int(input("Selection: "))
     port = serial.Serial("COM"+str(comm),115200)
     Main(port)
-    cubePort.close()

@@ -211,46 +211,42 @@ int main() {
     int j = 0;
     int k = 0;
 
-    char ch;
+    char ch0;
+    char ch1;
+    char ch2;
 
      while(1){
 
 
         //get a character from the serial buffer
-        ch = getchar();
+        ch0 = getchar();
 
-        // define first bit as no data, starting, reset
+        if(0b11100001 == ch0){
+            // Clear whole cube command
+            for(int k = 0; k < 32; k++){
+                for(int j = 0; j < 24; j++){
+                    for(int i = 0; i < 24; i++){
+                        frame[i][j][k][0] = false;
+                        frame[i][j][k][1] = false;
+                        frame[i][j][k][2] = false;
 
-        if(0b10000000 & ch){
-            i = 0;
-            j = 0;
-            k = 0;
+                    }
+                }
+            }
         }
-        else{
-
-            frame[i][j][k][0] = ch>>0 & 0b00000001;
-            frame[i][j][k][1] = ch>>1 & 0b00000001;
-            frame[i][j][k][2] = ch>>2 & 0b00000001;
+        // Check if ch0 is the first byte in the 3 byte LED update
+        else if(0b10000000 & ch0){
             
-            i++;
+            ch1 = getchar();
+            ch2 = getchar();
 
-            frame[i][j][k][0] = ch>>3 & 0b00000001;
-            frame[i][j][k][1] = ch>>4 & 0b00000001;
-            frame[i][j][k][2] = ch>>5 & 0b00000001;
+            i = ch0 & 0b00011111;
+            j = ch1 & 0b00011111;
+            k = ch2 & 0b00011111;
 
-            i++;
-
-            if(i==24){
-            i = 0;
-            j++;
-            }
-            if(j==24){
-                j = 0;
-                k++;
-            }
-            if(k==32){
-                k = 0;
-            }
+            frame[i][j][k][0] = ch0>>6 & 0b00000001;
+            frame[i][j][k][1] = ch1>>6 & 0b00000001;
+            frame[i][j][k][2] = ch2>>6 & 0b00000001;
 
         }
 
