@@ -7,7 +7,10 @@ Created on Thu May 23 11:22:16 2024
 
 import numpy as np
 import time
+import serial
+import serial.tools.list_ports
 
+packet = ""
 
 def getUpdatedVoxels(NewFrame,OldFrame):
     Diff = np.bitwise_xor(NewFrame,OldFrame)
@@ -32,27 +35,64 @@ def getUpdatedVoxels(NewFrame,OldFrame):
             j_last = j
             k_last = k
             
-            UpdatePacket += chr(0b10000000 |
-                                NewFrame[i,j,k,0] << 6 |
+            UpdatePacket += chr(0b01000000 |
+                                NewFrame[i,j,k,0] << 5 |
                                 i)
             UpdatePacket += chr(0b00000000 |
-                                NewFrame[i,j,k,1] << 6 |
+                                NewFrame[i,j,k,1] << 5 |
                                 j)
             UpdatePacket += chr(0b00000000 |
-                                NewFrame[i,j,k,2] << 6 |
+                                NewFrame[i,j,k,2] << 5 |
                                 k)
     return UpdatePacket
     
-def testSpeed():
+def testSpeed(commPortID):
+    
+    global packet
+    
+    try:
+        cubePort = serial.Serial("COM"+str(CommPortID),115200)
+        print("connected to cube")
+    except:
+        cubePort = None
+        print("Failed to connect to cube")
     
     cube = np.zeros([24,24,32,3],dtype='bool')
     oldCube = np.zeros([24,24,32,3],dtype='bool')
     
-    N = 0
+    N = 1
+    
+    gridPattern = np.array([[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,0,1,0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,0,1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0],
+                            [0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,1,0,0],
+                            [0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1,0,0],
+                            [0,0,0,1,1,1,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,1,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,1,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0],
+                            [0,0,1,1,1,1,1,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,1,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                            [0,0,0,1,1,1,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,0,0,0,1,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,1,0,0],
+                            [0,0,0,0,0,1,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,0,0,1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,1,0,0],
+                            [0,0,0,0,1,0,0,0,0,0,1,1,1,0,0,0,0,0,0,1,1,1,0,0],
+                            [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+                            ],
+                           dtype='bool')
     
     while(True):
         cube[:,:,:,:] = False
-        cube[:,:,N,1] = True
+        cube[:,:,0,0] = gridPattern
+        cube[:,:,N,:] = True
         
         start = time.perf_counter()
         
@@ -62,12 +102,29 @@ def testSpeed():
         
         print("Packet Generation Time {}".format(stop-start))
         
-        print(len(packet))
+        start = time.perf_counter()
         
-        oldCube = np.copy(cube)
+        if cubePort != None:
+            cubePort.write(bytearray(packet,'utf-8'))
+        
+        stop = time.perf_counter()
+        
+        print("Packet Send Time {}".format(stop-start))
         
         N = (N+1)%32
+        
+        oldCube = np.copy(cube)
 
 if __name__=="__main__":
-    testSpeed()
+    try:
+        Ports = serial.tools.list_ports.comports()
+        if len(Ports)==0:
+            raise
+        print(*Ports)
+        CommPortID = int(input("Select Port: "))
+    except:
+        CommPortID = None
+        print("Could not connect to THE CUBE")
+        
+    testSpeed(CommPortID)
                     

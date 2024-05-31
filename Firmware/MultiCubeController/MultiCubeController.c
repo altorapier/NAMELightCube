@@ -42,6 +42,7 @@ void OutputFrame(){
     
 
     for(int k = 0; k < 32; k++){
+
         // Load new layer data into the shift registers
         for(int cn = 0; cn < 3; cn++){
         for(int j = 0; j < 8; j++){
@@ -78,13 +79,13 @@ void OutputFrame(){
                 led = frame[i+16][j+16][k][c];
                 gpio_put(dataPin9,led);
 
-                busy_wait_at_least_cycles(10); // very short 10 cycle delay 10*8ns per cycle, ~80ns
+                busy_wait_at_least_cycles(5); // very short 10 cycle delay 10*8ns per cycle, ~80ns
 
                 //Pulse clk pin for at least 20ns
                 gpio_put(clkPin,1);
-                busy_wait_at_least_cycles(10);
+                busy_wait_at_least_cycles(5);
                 gpio_put(clkPin,0);
-                busy_wait_at_least_cycles(10);
+                busy_wait_at_least_cycles(5);
 
             }
         }
@@ -221,7 +222,8 @@ int main() {
         //get a character from the serial buffer
         ch0 = getchar();
 
-        if(0b11100001 == ch0){
+        // This character should not appear in normal update commands
+        if(0b01111111 == ch0){
             // Clear whole cube command
             for(int k = 0; k < 32; k++){
                 for(int j = 0; j < 24; j++){
@@ -235,7 +237,7 @@ int main() {
             }
         }
         // Check if ch0 is the first byte in the 3 byte LED update
-        else if(0b10000000 & ch0){
+        else if(0b01000000 & ch0){
             
             ch1 = getchar();
             ch2 = getchar();
@@ -244,9 +246,9 @@ int main() {
             j = ch1 & 0b00011111;
             k = ch2 & 0b00011111;
 
-            frame[i][j][k][0] = ch0>>6 & 0b00000001;
-            frame[i][j][k][1] = ch1>>6 & 0b00000001;
-            frame[i][j][k][2] = ch2>>6 & 0b00000001;
+            frame[i][j][k][0] = ch0>>5 & 0b00000001;
+            frame[i][j][k][1] = ch1>>5 & 0b00000001;
+            frame[i][j][k][2] = ch2>>5 & 0b00000001;
 
         }
 

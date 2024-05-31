@@ -393,7 +393,7 @@ class Window(tk.Frame):
         
         self.Particles = []
         
-        self.PipeRecv.send(self.Particles)
+        self.PipeRecv.send("#Clear")
     
     def annealSim(self):
         
@@ -678,11 +678,17 @@ def commControlThread(CommPortID,Pipe):
     
     if cubePort != None:
         # Clear command
-        cubePort.write(bytearray(chr(0b11100000),'utf-8'))
+        cubePort.write(bytearray(chr(0b01111111),'utf-8'))
     
     while True:
         if Pipe.poll():
             message = Pipe.recv()
+            if type(message) == str:
+                if message == "#Clear":
+                    # Send Clear command
+                    cubePort.write(bytearray(chr(0b11100001),'utf-8'))
+                    LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
+                    LightCubeOld = np.copy(LightCube)
             if type(message) == list:
                 Particles = message
         
@@ -690,7 +696,7 @@ def commControlThread(CommPortID,Pipe):
         
         packet = getUpdatedVoxels(LightCube, LightCubeOld)
         
-        print(np.sum(LightCube))
+        LightCubeOld = np.copy(LightCube)
         
         if cubePort != None:
             cubePort.write(bytearray(packet,'utf-8'))
@@ -883,14 +889,14 @@ def getUpdatedVoxels(NewFrame,OldFrame):
             j_last = j
             k_last = k
             
-            UpdatePacket += chr(0b10000000 |
-                                NewFrame[i,j,k,0] << 6 |
+            UpdatePacket += chr(0b01000000 |
+                                NewFrame[i,j,k,0] << 5 |
                                 i)
             UpdatePacket += chr(0b00000000 |
-                                NewFrame[i,j,k,1] << 6 |
+                                NewFrame[i,j,k,1] << 5 |
                                 j)
             UpdatePacket += chr(0b00000000 |
-                                NewFrame[i,j,k,2] << 6 |
+                                NewFrame[i,j,k,2] << 5 |
                                 k)
     return UpdatePacket
     
