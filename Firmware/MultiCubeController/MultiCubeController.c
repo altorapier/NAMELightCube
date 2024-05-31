@@ -33,7 +33,8 @@ bool frame[24][24][32][3] = {false};
 
 void OutputFrame(){
 
-    bool led = false;
+    uint32_t led = 0;
+    const uint32_t mask = 0b00000000000111111111000000000000;
 
     const int ColSeq[3] = {1,2,0};
     int c;
@@ -52,40 +53,32 @@ void OutputFrame(){
 
                 //Set all the data pins
 
-                led = frame[i][j][k][c];
-                gpio_put(dataPin1,led);
+                led = 0;
 
-                led = frame[i+8][j][k][c];
-                gpio_put(dataPin2,led);
+                led += frame[i   ][j   ][k][c] << 0;
+                led += frame[i+ 8][j   ][k][c] << 1;
+                led += frame[i+16][j   ][k][c] << 2;
 
-                led = frame[i+16][j][k][c];
-                gpio_put(dataPin3,led);
+                led += frame[i   ][j+ 8][k][c] << 3;
+                led += frame[i+ 8][j+ 8][k][c] << 4;
+                led += frame[i+16][j+ 8][k][c] << 5;
 
-                led = frame[i][j+8][k][c];
-                gpio_put(dataPin4,led);
+                led += frame[i   ][j+16][k][c] << 6;
+                led += frame[i+ 8][j+16][k][c] << 7;
+                led += frame[i+16][j+16][k][c] << 8;
 
-                led = frame[i+8][j+8][k][c];
-                gpio_put(dataPin5,led);
+                led = led << 12;
 
-                led = frame[i+16][j+8][k][c];
-                gpio_put(dataPin6,led);
+                gpio_put_masked(mask,led);
+                
 
-                led = frame[i][j+16][k][c];
-                gpio_put(dataPin7,led);
-
-                led = frame[i+8][j+16][k][c];
-                gpio_put(dataPin8,led);
-
-                led = frame[i+16][j+16][k][c];
-                gpio_put(dataPin9,led);
-
-                busy_wait_at_least_cycles(5); // very short 10 cycle delay 10*8ns per cycle, ~80ns
+                busy_wait_at_least_cycles(10); // very short 10 cycle delay 10*8ns per cycle, ~80ns
 
                 //Pulse clk pin for at least 20ns
                 gpio_put(clkPin,1);
-                busy_wait_at_least_cycles(5);
+                busy_wait_at_least_cycles(10);
                 gpio_put(clkPin,0);
-                busy_wait_at_least_cycles(5);
+                busy_wait_at_least_cycles(10);
 
             }
         }
