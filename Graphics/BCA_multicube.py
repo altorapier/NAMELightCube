@@ -23,48 +23,13 @@ import pygame
 from multiprocessing import Process, Queue, Pipe
 
 
-# Table from github repo, https://gist.github.com/GoodmanSciences/c2dd862cd38f21b0ad36b8f96b4bf1ee
-PeriodicTablefFile = "Periodic Table of Elements.csv"
-ImagePositions = np.genfromtxt("ElementImagePositions.txt")
-
-def loadTable(file):
-    """
-    Takes in file outputs ordered list of elements
-    """
-    
-    Elements = []
-    
-    with open(file,"r") as f:     
-        for line in f.readlines():
-            
-            line.strip("\n")
-            
-            info = line.split(",")
-            
-            Elements.append(info)
-    
-    return Elements
-
-
-try:
-    raise
-    pygame.mixer.init()
-    pygame.mixer.set_num_channels(20)
-    
-    
-    #Sound1 = pygame.mixer.Sound("07043286_shortv2.wav")
-    Sound1 = pygame.mixer.Sound("Chirp0.1ms.wav")
-    Sound2 = pygame.mixer.Sound("Chirp0.1msAlto.wav")
-except:
-    print("Failed to start audio mixer")
-    Sound1 = None
-    Sound2 = None
-
 MinDelay = 0.01
+
+SurfaceOnly = False
 
 
 # cube is always 1 unit
-LightN = [8,8,32]
+LightN = [24,24,32]
 LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
 DrawPriority = np.zeros([LightN[0],LightN[1],LightN[2]],dtype="byte")
 
@@ -88,9 +53,31 @@ SimConfig["Ion_Velocity"] = np.array([0,0,-1])
 
 SimConfig["Film_Thickness"] = 0.75
 SimConfig["Film_Mass"] = 29
-SimConfig["Film_N_Density"] = 50
+SimConfig["Film_N_Density"] = 40
 SimConfig["Film_SecondaryThreshold"] = 25
 SimConfig["Film_StickThreshold"] = 0.15
+
+# Table from github repo, https://gist.github.com/GoodmanSciences/c2dd862cd38f21b0ad36b8f96b4bf1ee
+PeriodicTablefFile = "Periodic Table of Elements.csv"
+ImagePositions = np.genfromtxt("ElementImagePositions.txt")
+
+def loadTable(file):
+    """
+    Takes in file outputs ordered list of elements
+    """
+    
+    Elements = []
+    
+    with open(file,"r") as f:     
+        for line in f.readlines():
+            
+            line.strip("\n")
+            
+            info = line.split(",")
+            
+            Elements.append(info)
+    
+    return Elements
 
 
 # Base particle class
@@ -129,7 +116,7 @@ class particle:
         
         #Electric stopping
         if InFilm and E != 0:
-            E_lost = np.clip(np.power(E,0.5) * 10 * Dis,0,E)
+            E_lost = np.clip(np.power(E,0.5) * 5 * Dis,0,E)
             
             fraction = np.sqrt((E-E_lost)*2/self.Mass) / np.linalg.norm(self.Vel)
             
@@ -202,10 +189,17 @@ class Window(tk.Frame):
         Atomic Number: {}
         Atomic Mass: {}"""
     
-    def __init__(self, master):
+    def __init__(self, master,CommPortID):
         """
         Initial setup of widgets and the general window position
         """
+        
+        self.PipeRecv, self.PipeSend = Pipe(duplex=True)
+        
+        self.Worker = Process(target=commControlThread, args=(CommPortID,self.PipeSend))
+        self.Worker.start()
+        
+        print("started comm worker")
         
         global SimConfig, cubePort
         
@@ -271,7 +265,9 @@ class Window(tk.Frame):
                                          )
         self.AnnealButton.grid(column = 0, row = 1,padx = 20)
         
-        SpeedInputText = tk.Label(ControlFrame,text = "Energy")
+        SpeedInputText = tk.Label(ControlFrame,
+                                  text = "Energy",
+                                  font=tkFont.Font(size=15))
         SpeedInputText.grid(column=1,row = 0)
         self.SpeedInput = tk.DoubleVar() 
         self.SpeedScale = tk.Scale(ControlFrame,
@@ -285,7 +281,9 @@ class Window(tk.Frame):
         self.SpeedScale.grid(column = 1, row = 1)
         
         
-        MassInputText = tk.Label(ControlFrame,text = "Mass")
+        MassInputText = tk.Label(ControlFrame,
+                                 text = "Mass",
+                                 font=tkFont.Font(size=15))
         MassInputText.grid(column=2,row = 0)
         self.MassInput = tk.DoubleVar() 
         self.MassScale = tk.Scale(ControlFrame,
@@ -299,7 +297,9 @@ class Window(tk.Frame):
         self.MassScale.grid(column = 2, row = 1)
         
         
-        self.SetupLabel = tk.Label(ControlFrame,text = self.InfoTemplate)
+        self.SetupLabel = tk.Label(ControlFrame,
+                                   text = self.InfoTemplate,
+                                   font=tkFont.Font(size=15))
         self.SetupLabel.grid(column = 3, row = 1)
         self.GetSetupInfo()
         
@@ -331,7 +331,7 @@ class Window(tk.Frame):
         
         Vel = np.sqrt( self.SpeedInput.get() * 100 ) / Mass * np.array([0,0,-0.1])
         
-        Vel = 0.5*self.SpeedInput.get() * np.array([0,0,-0.1])
+        Vel = 0.3*self.SpeedInput.get() * np.array([0,0,-0.1])
         
         dT = 0.005 / abs(Vel[2])
         
@@ -393,12 +393,48 @@ class Window(tk.Frame):
         
         self.Particles = []
         
-        #Update cube display
-        if cubePort != None:
-            self.outputCube()
-            Send(cubePort,LightCube)    
+        self.PipeRecv.send("#Clear")
+    
+    def annealSim(self):
         
+        self.haltSim()
         
+        Trange = np.append(np.linspace(0,1,50),np.linspace(1,0,50))
+        
+        for T in Trange:
+            
+            DelPar = []
+            
+            for Pn in range(len(self.Particles)):
+                
+                #Skip any particle no in the film
+                if self.Particles[Pn].Pos[2] > 0.75:
+                    continue
+                
+                R = np.random.rand()
+                #Do nothing
+                if R*T < 0.05:
+                    continue
+                #Random move only x/y plane?
+                elif R*T < 0.8:
+                    self.Particles[Pn].Pos += (np.random.random(3)-np.array([0.5,0.5,0.5]))*0.01
+                    if self.Particles[Pn].Pos[2] > 0.75:
+                        self.Particles[Pn].Pos[2] = 0.749
+                else:
+                    if Pn > 25:
+                        DelPar.append(Pn)
+            
+            for Pn in DelPar[-1::-1]:
+                self.Draw.delete(self.Particles[Pn].ID)
+                self.Particles.pop(Pn)
+            
+            self.drawParticles()
+            
+            self.PipeRecv.send(self.Particles)
+            
+            self.Draw.update()
+            
+            time.sleep(0.016)
             
     def elementClick(self,event):
         global ImagePositions
@@ -409,6 +445,7 @@ class Window(tk.Frame):
             if abs(event.x-E[0])<13 and abs(event.y-E[1])<13:
                 self.MassInput.set(N+1)
                 break
+        
 
         
         
@@ -446,7 +483,7 @@ class Window(tk.Frame):
                 
                 if type(M) != None:
                     
-                    MagM = np.linalg.norm(M) * 0.5
+                    MagM = np.linalg.norm(M) * 1
                     
                     global Sound1, Sound2, MinDelay
                     
@@ -492,10 +529,7 @@ class Window(tk.Frame):
             
             #print("Total Energy: {}".format(Energy))
             
-            self.outputCube()
-            
-            if cubePort != None:
-                Send(cubePort,LightCube)
+            self.PipeRecv.send(self.Particles)
             
             for P in NewParticles:
                 self.Particles.append(P)
@@ -589,102 +623,6 @@ class Window(tk.Frame):
                     Y2 = self.Size * (1-P.PastPos[n+1][2])
                     
                     self.Draw.coords(ID,X1,Y1,X2,Y2)
-                    
-                    
-                    
-    
-    def convertColour(self,Col):
-        
-        Str = "#"
-        Str=Str+"{:02x}".format(round(Col[0]*255))
-        Str=Str+"{:02x}".format(round(Col[1]*255))
-        Str=Str+"{:02x}".format(round(Col[2]*255))
-
-            
-        return Str
-    
-    
-    def outputCube(self):
-        
-        global LightCube,LightN,DrawPriority,SimConfig
-        
-        LightCube[:,:,:,:] = False #clear cube
-        DrawPriority[:,:,:] = 0 #Clear Draw Priority
-        
-        surfacelayer = int( SimConfig["Film_Thickness"] * LightN[2] )
-        
-        LightCube[:,:,surfacelayer,0] = True
-        LightCube[:,:,surfacelayer,1] = True
-        LightCube[:,:,surfacelayer,2] = False
-        
-        for P in self.Particles:
-            Pos = np.copy(P.Pos)
-            Pos[0] = np.round(Pos[0]*LightN[0] - 0.5)
-            Pos[1] = np.round(Pos[1]*LightN[1] - 0.5)
-            Pos[2] = np.round(Pos[2]*LightN[2] - 0.5)
-            
-            i = int(Pos[0])
-            j = int(Pos[1])
-            k = int(Pos[2])
-            
-            # pShape = [[0,0,0],[0,0,1],[0,1,0],[0,1,1],
-            #           [1,0,0],[1,0,1],[1,1,0],[1,1,1]]
-            
-            pShape = [[0,0,0]]
-            
-            if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
-                if DrawPriority[i,j,k] < P.DrawPri: #Check is the draw priority is larger
-                    if P.Col[0]>0.5:
-                        for S in pShape:
-                            LightCube[i+S[0],j+S[1],k+S[2],0] = True
-                    if P.Col[1]>0.5:
-                        for S in pShape:
-                            LightCube[i+S[0],j+S[1],k+S[2],1] = True
-                    if P.Col[2]>0.5:
-                        for S in pShape:
-                            LightCube[i+S[0],j+S[1],k+S[2],2] = True
-                
-                    DrawPriority[i,j,k] = P.DrawPri
-            
-            # Draw any trails for the particle
-            if P.Trail:
-                N = len(P.PastPos)
-                self.drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
-                for n in range(N-1):
-                    self.drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
-        
-        #print("Seconds to draw cube: {}".format((End-Start)))
-    
-    
-    def drawLineCube(self,P1,P2,Col,DrawPri):
-        
-        global LightCube,LightN,DrawPriority
-        N = int(np.linalg.norm(P2-P1)*max(LightN)*2) # Number of sample points
-        if N==0:
-            return
-        for n in range(N+1):
-            
-            Pos = ( n/N * (P2-P1) + P1)
-            
-            Pos[0] = np.round(Pos[0]*LightN[0])
-            Pos[1] = np.round(Pos[1]*LightN[1])
-            Pos[2] = np.round(Pos[2]*LightN[2])
-            
-            i = int(Pos[0])
-            j = int(Pos[1])
-            k = int(Pos[2])
-            
-            #Check if in bounds
-            if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
-                if DrawPriority[i,j,k] < DrawPri:
-                    if Col[0]>0.5:
-                        LightCube[i,j,k,0] = True
-                    if Col[1]>0.5:
-                        LightCube[i,j,k,1] = True
-                    if Col[2]>0.5:
-                        LightCube[i,j,k,2] = True
-                
-                    DrawPriority[i,j,k] = DrawPri
     
     def plotCube(self):
         
@@ -702,7 +640,206 @@ class Window(tk.Frame):
         ax.voxels(voxelarray, facecolors=colors)
 
         plt.show()
+                    
+                    
+                    
+    
+    def convertColour(self,Col):
+        
+        Str = "#"
+        Str=Str+"{:02x}".format(round(Col[0]*255))
+        Str=Str+"{:02x}".format(round(Col[1]*255))
+        Str=Str+"{:02x}".format(round(Col[2]*255))
+
             
+        return Str
+
+
+#####################################################
+#####################################################
+
+def commControlThread(CommPortID,Pipe):
+    
+    
+    # cube is always 1 unit
+    LightN = [24,24,32]
+    LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
+    LightCubeOld = np.copy(LightCube)
+    DrawPriority = np.zeros([LightN[0],LightN[1],LightN[2]],dtype="byte")
+    
+    try:
+        cubePort = serial.Serial("COM"+str(CommPortID),115200)
+        print("connected to cube")
+    except:
+        cubePort = None
+        print("Failed to connect to cube")
+        
+    Particles = []
+    
+    if cubePort != None:
+        # Clear command
+        cubePort.write(bytearray(chr(0b01111111),'utf-8'))
+    
+    while True:
+        if Pipe.poll():
+            message = Pipe.recv()
+            if type(message) == str:
+                if message == "#Clear":
+                    # Send Clear command
+                    cubePort.write(bytearray(chr(0b11100001),'utf-8'))
+                    LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
+                    LightCubeOld = np.copy(LightCube)
+            if type(message) == list:
+                Particles = message
+        
+        LightCube = outputCube(Particles, LightCube, LightN, DrawPriority)
+        
+        packet = getUpdatedVoxels(LightCube, LightCubeOld)
+        
+        LightCubeOld = np.copy(LightCube)
+        
+        if cubePort != None:
+            cubePort.write(bytearray(packet,'utf-8'))
+    
+#####################################################
+#####################################################
+
+    
+def outputCube(Particles,LightCube,LightN,DrawPriority):
+    
+    global SurfaceOnly
+    
+    LightCube[:,:,:,:] = False #clear cube
+    DrawPriority[:,:,:] = 0 #Clear Draw Priority
+    
+    surfacelayer = int( SimConfig["Film_Thickness"] * LightN[2] )
+    
+    
+    if SurfaceOnly:
+        LightCube[:,:,surfacelayer,0] = True
+        LightCube[:,:,surfacelayer,1] = True
+        LightCube[:,:,surfacelayer,2] = False
+    else:
+        LightCube[:,:,surfacelayer,0] = True
+        LightCube[:,:,surfacelayer,1] = True
+        LightCube[:,:,surfacelayer,2] = False
+        
+        # LightCube[:,:,0,0] = True
+        # LightCube[:,:,0,1] = True
+        # LightCube[:,:,0,2] = False
+        
+        LightCube[0,0,:surfacelayer,0] = True
+        LightCube[0,0,:surfacelayer,1] = True
+        LightCube[0,0,:surfacelayer,2] = False
+        
+        LightCube[0,-1,:surfacelayer,0] = True
+        LightCube[0,-1,:surfacelayer,1] = True
+        LightCube[0,-1,:surfacelayer,2] = False
+        
+        LightCube[-1,0,:surfacelayer,0] = True
+        LightCube[-1,0,:surfacelayer,1] = True
+        LightCube[-1,0,:surfacelayer,2] = False
+        
+        LightCube[-1,-1,:surfacelayer,0] = True
+        LightCube[-1,-1,:surfacelayer,1] = True
+        LightCube[-1,-1,:surfacelayer,2] = False
+        
+        LightCube[:,0,0,0] = True
+        LightCube[:,0,0,1] = True
+        LightCube[:,0,0,2] = False
+        
+        LightCube[:,-1,0,0] = True
+        LightCube[:,-1,0,1] = True
+        LightCube[:,-1,0,2] = False
+        
+        LightCube[0,:,0,0] = True
+        LightCube[0,:,0,1] = True
+        LightCube[0,:,0,2] = False
+        
+        LightCube[-1,:,0,0] = True
+        LightCube[-1,:,0,1] = True
+        LightCube[-1,:,0,2] = False
+    
+    for P in Particles:
+        Pos = np.copy(P.Pos)
+        Pos[0] = np.round(Pos[0]*LightN[0] - 0.5)
+        Pos[1] = np.round(Pos[1]*LightN[1] - 0.5)
+        Pos[2] = np.round(Pos[2]*LightN[2] - 0.5)
+        
+        i = int(Pos[0])
+        j = int(Pos[1])
+        k = int(Pos[2])
+        
+        # pShape = [[0,0,0],[0,0,1],[0,1,0],[0,1,1],
+        #           [1,0,0],[1,0,1],[1,1,0],[1,1,1]]
+        
+        pShape = [[0,0,0]]
+        
+        if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
+            if DrawPriority[i,j,k] < P.DrawPri: #Check is the draw priority is larger
+                if P.Col[0]>0.5:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],0] = True
+                else:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],0] = False
+                if P.Col[1]>0.5:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],1] = True
+                else:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],1] = False
+                if P.Col[2]>0.5:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],2] = True
+                else:
+                    for S in pShape:
+                        LightCube[i+S[0],j+S[1],k+S[2],2] = False
+            
+                DrawPriority[i,j,k] = P.DrawPri
+        
+        # Draw any trails for the particle
+        if P.Trail:
+            N = len(P.PastPos)
+            drawLineCube(P.Pos, P.PastPos[-1], P.Col, P.DrawPri)
+            for n in range(N-1):
+                drawLineCube(P.PastPos[n], P.PastPos[n+1], P.TrailCol, P.DrawPri)
+    
+    return LightCube
+
+
+def drawLineCube(P1,P2,Col,DrawPri):
+    
+    global LightCube,LightN,DrawPriority
+    N = int(np.linalg.norm(P2-P1)*max(LightN)*2) # Number of sample points
+    if N==0:
+        return
+    for n in range(N+1):
+        
+        Pos = ( n/N * (P2-P1) + P1)
+        
+        Pos[0] = np.round(Pos[0]*LightN[0])
+        Pos[1] = np.round(Pos[1]*LightN[1])
+        Pos[2] = np.round(Pos[2]*LightN[2])
+        
+        i = int(Pos[0])
+        j = int(Pos[1])
+        k = int(Pos[2])
+        
+        #Check if in bounds
+        if ( 0<=i<LightN[0] ) and ( 0<=j<LightN[1] ) and ( 0<=k<LightN[2] ):
+            if DrawPriority[i,j,k] < DrawPri:
+                if Col[0]>0.5:
+                    LightCube[i,j,k,0] = True
+                if Col[1]>0.5:
+                    LightCube[i,j,k,1] = True
+                if Col[2]>0.5:
+                    LightCube[i,j,k,2] = True
+            
+                DrawPriority[i,j,k] = DrawPri
+
+################################################
+################################################            
 
 def Send(port,lightCube):
     
@@ -725,18 +862,68 @@ def Send(port,lightCube):
     
     
     port.write(bytearray(framepacket,'utf-8'))
+
+
+
+
+def getUpdatedVoxels(NewFrame,OldFrame):
+    Diff = np.bitwise_xor(NewFrame,OldFrame)
+    DiffPos = np.nonzero(Diff)
+    UpdatePacket = ""
+    
+    i_last = -1
+    j_last = -1
+    k_last = -1
+    
+    for Pn in range(len(DiffPos[0])):
+        
+        i = DiffPos[0][Pn]
+        j = DiffPos[1][Pn]
+        k = DiffPos[2][Pn]
+        
+        if i_last == i and j_last == j  and k_last == k:
+            continue
+        else:
+            
+            i_last = i
+            j_last = j
+            k_last = k
+            
+            UpdatePacket += chr(0b01000000 |
+                                NewFrame[i,j,k,0] << 5 |
+                                i)
+            UpdatePacket += chr(0b00000000 |
+                                NewFrame[i,j,k,1] << 5 |
+                                j)
+            UpdatePacket += chr(0b00000000 |
+                                NewFrame[i,j,k,2] << 5 |
+                                k)
+    return UpdatePacket
     
 
 if __name__=="__main__":
+    
+    try:
+        pygame.mixer.init()
+        pygame.mixer.set_num_channels(20)
+        
+        
+        #Sound1 = pygame.mixer.Sound("07043286_shortv2.wav")
+        Sound1 = pygame.mixer.Sound("Chirp0.1ms.wav")
+        Sound2 = pygame.mixer.Sound("Chirp0.1msAlto.wav")
+    except:
+        print("Failed to start audio mixer")
+        Sound1 = None
+        Sound2 = None
     
     try:
         Ports = serial.tools.list_ports.comports()
         if len(Ports)==0:
             raise
         print(*Ports)
-        Selection = int(input("Select Port: "))
-        cubePort = serial.Serial("COM"+str(Selection),115200)
+        CommPortID = int(input("Select Port: "))
     except:
+        CommPortID = None
         print("Could not connect to THE CUBE")
         
     #load the elements
@@ -745,10 +932,7 @@ if __name__=="__main__":
     
     #Make and start main window
     root = tk.Tk()
-    Sim = Window(root)
+    Sim = Window(root,CommPortID)
     root.title("Cube display")
 
     Sim.mainloop()
-    
-    cubePort.close()
-    print("close port")
