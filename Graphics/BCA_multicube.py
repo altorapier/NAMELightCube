@@ -29,7 +29,7 @@ SurfaceOnly = False
 
 
 # cube is always 1 unit
-LightN = [16,16,32]
+LightN = [24,24,32]
 LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
 DrawPriority = np.zeros([LightN[0],LightN[1],LightN[2]],dtype="byte")
 
@@ -662,7 +662,7 @@ def commControlThread(CommPortID,Pipe):
     
     
     # cube is always 1 unit
-    LightN = [16,16,32]
+    LightN = [24,24,32]
     LightCube = np.zeros([LightN[0],LightN[1],LightN[2],3],dtype="bool") # cube N*N*N*3 RGB
     LightCubeOld = np.copy(LightCube)
     DrawPriority = np.zeros([LightN[0],LightN[1],LightN[2]],dtype="byte")

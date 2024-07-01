@@ -49,7 +49,7 @@ def getUpdatedVoxels(NewFrame, OldFrame):
     return UpdatePacket
 
 def read_excel_data(file_path):
-    df = pd.read_excel(file_path)
+    df = pd.read_csv(file_path)
     frames = {}
     max_frame = df['Frame'].max()
     
@@ -59,12 +59,16 @@ def read_excel_data(file_path):
         
         for _, row in frame_data.iterrows():
             x, y, z = int(row['X']), int(row['Y']), int(row['Z'])
-            if row['LED'] == 1:
-                cube_frame[x, y, z] = [True, False, False]
+            if row['LED'] == 0:
+                cube_frame[x, y, z] = [False, False, False]
+            elif row['LED'] == 1:
+                cube_frame[x, y, z] = [True, True, False]
             elif row['LED'] == 2:
                 cube_frame[x, y, z] = [False, True, False]
             elif row['LED'] == 3:
-                cube_frame[x, y, z] = [False, True, True]
+                cube_frame[x, y, z] = [False, False, True]
+            elif row['LED'] == 4:
+                cube_frame[x, y, z] = [True, True, True]
         
         frames[frame] = cube_frame
     
@@ -80,14 +84,21 @@ def visualize_cube(cube):
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-
+    ax.view_init(elev=45, azim=45) 
     def plot_voxels(voxels, color):
         x, y, z = np.nonzero(voxels)
-        ax.scatter(x, y, z, c=color, marker='o')
-
-    plot_voxels(cube[..., 0], 'r')
-    plot_voxels(cube[..., 1], 'g')
-    plot_voxels(cube[..., 2], 'b')
+        if color == 'w':
+            ax.scatter(x, y, z, c=color, marker='o',edgecolors='k')
+        else:
+            ax.scatter(x, y, z, c=color, marker='o')
+        
+    plot_voxels(np.logical_and(np.logical_and(cube[..., 0], np.invert(cube[..., 1])), np.invert(cube[..., 2])), 'r')
+    plot_voxels(np.logical_and(np.logical_and(cube[..., 1], np.invert(cube[..., 0])), np.invert(cube[..., 2])), 'g')
+    plot_voxels(np.logical_and(np.logical_and(cube[..., 2], np.invert(cube[..., 0])), np.invert(cube[..., 0])), 'b')
+    plot_voxels(np.logical_and(np.logical_and(cube[..., 0], (cube[..., 1])), np.invert(cube[..., 2])), 'y')
+    plot_voxels(np.logical_and(np.logical_and(cube[..., 1], (cube[..., 2])), np.invert(cube[..., 0])), 'c')
+    plot_voxels(np.logical_and(np.logical_and(cube[..., 0], (cube[..., 2])), np.invert(cube[..., 1])), 'm')
+    plot_voxels(np.logical_and(np.logical_and(cube[..., 0], (cube[..., 1])), (cube[..., 2])), 'w')
 
     plt.draw()
     plt.pause(0.001)
@@ -120,22 +131,22 @@ def testSpeed(commPortID, frames):
     while N < len(frame_keys):
         cube = frames[frame_keys[N]]
         
-        start = time.perf_counter()
+        #start = time.perf_counter()
         
         packet = getUpdatedVoxels(cube, oldCube)
         
-        stop = time.perf_counter()
+        #stop = time.perf_counter()
         
-        print("Packet Generation Time {}".format(stop - start))
+        #print("Packet Generation Time {}".format(stop - start))
         
-        start = time.perf_counter()
+        #start = time.perf_counter()
         
         if cubePort is not None:
             cubePort.write(bytearray(packet, 'utf-8'))
         
-        stop = time.perf_counter()
+        #stop = time.perf_counter()
         
-        print("Packet Send Time {}".format(stop - start))
+        #print("Packet Send Time {}".format(stop - start))
         
         ax.clear()
         ax.set_xlim([0, 24])

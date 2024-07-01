@@ -20,7 +20,7 @@ def getUpdatedVoxels(NewFrame, OldFrame):
     i_last = -1
     j_last = -1
     k_last = -1
-    
+    10
     for Pn in range(len(DiffPos[0])):
         
         i = DiffPos[0][Pn]

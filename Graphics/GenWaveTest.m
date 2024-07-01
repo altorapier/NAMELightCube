@@ -15,27 +15,29 @@ LED = [];
 for frame = 1:num_frames
     for x = 0:num_x-1  % Adjusted for 0-based indexing
         for y = 0:num_y-1  % Adjusted for 0-based indexing
-            % Calculate the z position of the wave
-            z = round((num_z - 1) / 2 * (1 + sin(2 * pi * (x / num_x + y / num_y) + 2 * pi * frame / num_frames)));
+            for z = 0:num_z-1 % Adjusted for 0-based indexing
+            % Iniital value 0 for colourless
+            led_state = 0;
             
-            % Ensure z is within bounds [0, num_z-1]
-            z = max(0, min(z, num_z - 1));
-            
-            % Determine the LED state (color) based on the z position
-            if z < 10
-                led_state = 1;  % Mix of red and green
-            elseif z < 21
-                led_state = 2;  % Green
-            else
-                led_state = 3;  % Mix of green and blue
+                % Calculate the z position of the wave
+                z_wave = round((num_z - 1) / 2 * (1 + sin(2 * pi * (x / num_x + y / num_y) + 2 * pi * frame / num_frames)));
+                if z_wave == z
+                    % Determine the LED state (color) based on the z position
+                    if z < 10
+                        led_state = 1;  % Mix of red and green
+                    elseif z < 21
+                        led_state = 2;  % Green
+                    else
+                        led_state = 3;  % Mix of green and blue
+                    end
+                end
+                % Append the data for the current point
+                Frame = [Frame; frame];
+                X = [X; x];
+                Y = [Y; y];
+                Z = [Z; z];
+                LED = [LED; led_state];
             end
-            
-            % Append the data for the current point
-            Frame = [Frame; frame];
-            X = [X; x];
-            Y = [Y; y];
-            Z = [Z; z];
-            LED = [LED; led_state];
         end
     end
 end
