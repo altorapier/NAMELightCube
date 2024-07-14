@@ -157,7 +157,7 @@ def testSpeed(commPortID):
 def textScroll(Text,Colour,LightCube,LightN,Scale):
     global cube, oldCube, cubePort
     for Pos in range(-9*(len(Text))*Scale,LightN[0]*4):
-        cube = textDraw(Text,[1,0,0],LightCube,[24,24,32],Pos,Scale)
+        cube = textDraw(Text,[1,1,1],LightCube,[24,24,32],Pos,Scale)
         updateCube()
         time.sleep(0.05)
         oldCube = np.copy(cube)
@@ -169,6 +169,11 @@ def textDraw(Text,Colour,LightCube,LightN,Pos,Scale):
     # Path: [0,0] -> [N,0] -> [N,N] -> [N,0] -> [0,0]
     Pathx = list(range(0,LightN[0]-1)) + (LightN[0]-1)*[LightN[0]-1] + list(range(LightN[0]-1,0,-1)) + (LightN[0]-1)*[0]
     Pathy = (LightN[0]-1)*[0] + list(range(0,LightN[0]-1)) + (LightN[0]-1)*[LightN[0]-1] + list(range(LightN[0]-1,0,-1))
+    
+    if LightN[0] != 16:
+        temp = Pathy
+        Pathy = Pathx
+        Pathx = temp
     
     for Tn in range(len(Text)):
         Chr = Text[len(Text) - Tn - 1]
@@ -194,7 +199,7 @@ def textDraw(Text,Colour,LightCube,LightN,Pos,Scale):
                 
                 LightCube[Lx,Ly,j,0] = LED & Colour[0]
                 LightCube[Lx,Ly,j,1] = LED & Colour[1]
-                LightCube[Lx,Ly,j,1] = LED & Colour[2]
+                LightCube[Lx,Ly,j,2] = LED & Colour[2]
     
     
     return LightCube
